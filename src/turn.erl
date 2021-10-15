@@ -512,11 +512,9 @@ send(State, Pkt) when is_binary(Pkt) ->
     Sock = State#state.sock,
     if SockMod == gen_udp ->
            {Addr, Port} = State#state.addr,
-           gen_udp:send(Sock, Addr, Port, stun_codec:add_fingerprint(Pkt));
-       %    gen_udp:send(Sock, Addr, Port, Pkt);
+           gen_udp:send(Sock, Addr, Port, Pkt);
        true ->
-           case SockMod:send(Sock, stun_codec:add_fingerprint(Pkt)) of
-               %    case SockMod:send(Sock, Pkt) of
+           case SockMod:send(Sock, Pkt) of
                ok ->
                    ok;
                _ ->
@@ -525,7 +523,7 @@ send(State, Pkt) when is_binary(Pkt) ->
            end
     end;
 send(State, Msg) ->
-    ?LOG_DEBUG(#{verbatim => {"Sending:~n~s", [stun_codec:pp(Msg)]}}),
+    % ?LOG_DEBUG(#{verbatim => {"Sending:~n~s", [stun_codec:pp(Msg)]}}),
     Key = State#state.key,
     case Msg of
         #stun{class = indication} ->
