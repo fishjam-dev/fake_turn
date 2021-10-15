@@ -37,5 +37,10 @@ start(Secret, Opts) ->
            base64:encode(Hash)
         end,
 
-    TurnOpts = [{use_turn, true}, {auth_fun, Auth_fun}, {auth_realm, "turn.stun.localhost"}],
+    % TurnOpts = [{use_turn, true}, {auth_fun, Auth_fun}, {auth_realm, "turn.stun.localhost"}],
+    TurnOpts =
+        [{use_turn, true},
+         {auth_fun, Auth_fun},
+         {auth_realm, "turn.stun.localhost"},
+         {turn_ipv4_address, IP}],
     stun_listener:add_listener(IP, Port, Transport, TurnOpts).
