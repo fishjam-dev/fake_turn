@@ -73,7 +73,8 @@
          hook_fun :: function() | undefined, session_id :: binary(),
          rcvd_bytes = 0 :: non_neg_integer(), rcvd_pkts = 0 :: non_neg_integer(),
          sent_bytes = 0 :: non_neg_integer(), sent_pkts = 0 :: non_neg_integer(),
-         ice_bin_pid :: pid(), libnice_addr :: inet:ip_address() | undefined,
+         ice_bin_pid :: pid(), ice_connector_pid :: pid(),
+         peer :: {inet:ip_address(), integer()} | undefined,
          start_timestamp = get_timestamp() :: integer(), in_use :: boolean()}).
 
 %%====================================================================
@@ -115,6 +116,7 @@ init([Opts]) ->
                max_permissions = proplists:get_value(max_permissions, Opts),
                server_name = proplists:get_value(server_name, Opts),
                ice_bin_pid = proplists:get_value(ice_bin_pid, Opts),
+               ice_connector_pid = proplists:get_value(ice_connector_pid, Opts),
                username = Username,
                realm = Realm,
                addr = AddrPort,
@@ -295,7 +297,7 @@ active(#stun{class = indication,
                     case State#state.in_use of
                         false ->
                             State#state.ice_bin_pid ! {used_turn_pid, self()},
-                            State#state{in_use = true};
+                            State#state{in_use = true, peer = {Addr, Port}};
                         true ->
                             State
                     end,
@@ -370,7 +372,7 @@ active(#turn{channel = Channel, data = Data}, State) ->
                 case State#state.in_use of
                     false ->
                         State#state.ice_bin_pid ! {used_turn_pid, self()},
-                        State#state{in_use = true};
+                        State#state{in_use = true, peer = {Addr, Port}};
                     true ->
                         State
                 end,
@@ -400,8 +402,16 @@ handle_sync_event(_Event, _From, StateName, State) ->
 
 handle_info({udp, Sock, Addr, Port, Data}, StateName, State) ->
     inet:setopts(Sock, [{active, once}]),
-    NewState = send_payload_to_client(Data, Addr, Port, State),
-    {next_state, StateName, NewState#state{libnice_addr = Addr}};
+    State1 = send_payload_to_client(Data, {Addr, Port}, State),
+    State2 =
+        case {State#state.peer, may_be_stun_packet(Data)} of
+            {undefined, false} ->
+                State#state.ice_bin_pid ! {used_turn_pid, self()},
+                State1#state{peer = {Addr, Port}};
+            _ ->
+                State1
+        end,
+    {next_state, StateName, State2};
 handle_info({timeout, _Tref, stop}, _StateName, State) ->
     {stop, normal, State};
 handle_info({timeout, _Tref, {permission_timeout, Addr}}, StateName, State) ->
@@ -426,12 +436,13 @@ handle_info({timeout, _Tref, {channel_timeout, Channel}}, StateName, State) ->
     end;
 handle_info({'DOWN', _Ref, _, _, _}, _StateName, State) ->
     {stop, normal, State};
-handle_info({ice_payload, Payload, Port}, StateName, #state{in_use = false} = State) ->
-    State#state.ice_bin_pid ! {used_turn_pid, self()},
-    NewState = send_payload_to_client(Payload, State#state.libnice_addr, Port, State),
-    {next_state, StateName, NewState#state{in_use = true}};
-handle_info({ice_payload, Payload, Port}, StateName, State) ->
-    NewState = send_payload_to_client(Payload, State#state.libnice_addr, Port, State),
+handle_info({ice_payload, Payload}, StateName, #state{in_use = false} = State) ->
+    % State#state.ice_bin_pid ! {used_turn_pid, self()},
+    NewState = send_payload_to_client(Payload, State#state.peer, State),
+    % {next_state, StateName, NewState#state{in_use = true}};
+    {next_state, StateName, NewState};
+handle_info({ice_payload, Payload}, StateName, State) ->
+    NewState = send_payload_to_client(Payload, State#state.peer, State),
     {next_state, StateName, NewState};
 handle_info(Info, StateName, State) ->
     ?LOG_ERROR("Unexpected info in '~s': ~p", [StateName, Info]),
@@ -538,8 +549,8 @@ send(State, Msg) ->
             State
     end.
 
-send_payload_to_client(Payload, PeerAddr, PeerPort, State) ->
-    Peer = {PeerAddr, PeerPort},
+send_payload_to_client(Payload, Peer, State) ->
+    {PeerAddr, _PeerPort} = Peer,
     case {maps:find(PeerAddr, State#state.permissions), maps:find(Peer, State#state.peers)} of
         {{ok, _}, {ok, Channel}} ->
             TurnMsg = #turn{channel = Channel, data = Payload},
@@ -558,13 +569,27 @@ send_payload_to_client(Payload, PeerAddr, PeerPort, State) ->
             State
     end.
 
-maybe_send_to_ice_bin(#state{ice_bin_pid = ICEBinPid},
-                      <<FirstByte, _Tail/binary>> = Payload)
-    when ice_bin_pid /= undefined, (FirstByte == 128) or (FirstByte == 144) ->
-    ICEBinPid ! {ice_payload, 1, Payload},
-    true;
-maybe_send_to_ice_bin(_State, _Payload) ->
+may_be_stun_packet(<<0:2, Type:14, _Tail/binary>> = _Pkt) ->
+    Method = ?STUN_METHOD(Type),
+    lists:member(Method,
+                 [?STUN_METHOD_BINDING,
+                  ?STUN_METHOD_ALLOCATE,
+                  ?STUN_METHOD_REFRESH,
+                  ?STUN_METHOD_SEND,
+                  ?STUN_METHOD_DATA,
+                  ?STUN_METHOD_CREATE_PERMISSION,
+                  ?STUN_METHOD_CHANNEL_BIND]);
+may_be_stun_packet(_Pkt) ->
     false.
+
+maybe_send_to_ice_bin(#state{ice_connector_pid = ICEConnectorPid}, Payload) ->
+    case {erlang:is_pid(ICEConnectorPid), may_be_stun_packet(Payload)} of
+        {true, false} ->
+            ICEConnectorPid ! {ice_payload, 1, 1, Payload},
+            true;
+        _ ->
+            false
+    end.
 
 time_left(TRef) ->
     erlang:read_timer(TRef) div 1000.

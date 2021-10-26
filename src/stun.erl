@@ -68,6 +68,7 @@
          realm = <<"">> :: binary(),
          auth_fun :: function() | undefined,
          ice_bin_pid :: pid() | undefined,
+         ice_connector_pid :: pid() | undefined,
          hook_fun :: function() | undefined,
          server_name = ?SERVER_NAME :: binary(),
          buf = <<>> :: binary(),
@@ -326,6 +327,7 @@ process(State, #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, Sec
                  {max_port, State#state.max_port},
                  {hook_fun, State#state.hook_fun},
                  {ice_bin_pid, State#state.ice_bin_pid},
+                 {ice_connector_pid, State#state.ice_connector_pid},
                  {session_id, State#state.session_id},
                  {lifetime, Msg#stun.'LIFETIME'}
                  | if SockMod /= gen_udp ->
@@ -549,6 +551,8 @@ prepare_state(Opts, Sock, Peer, SockMod) when is_list(Opts) ->
                                 State;
                             ({ice_bin_pid, ICEBinPid}, State) ->
                                 State#state{ice_bin_pid = ICEBinPid};
+                            ({ice_connector_pid, ICEConnectorPid}, State) ->
+                                State#state{ice_connector_pid = ICEConnectorPid};
                             ({use_turn, _}, State) ->
                                 State;
                             (use_turn, State) ->
