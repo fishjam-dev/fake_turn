@@ -67,8 +67,7 @@
          nonces = treap:empty() :: treap:treap(),
          realm = <<"">> :: binary(),
          auth_fun :: function() | undefined,
-         ice_bin_pid :: pid() | undefined,
-         ice_connector_pid :: pid() | undefined,
+         peer_pid :: pid() | undefined,
          hook_fun :: function() | undefined,
          server_name = ?SERVER_NAME :: binary(),
          buf = <<>> :: binary(),
@@ -326,8 +325,7 @@ process(State, #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, Sec
                  {min_port, State#state.min_port},
                  {max_port, State#state.max_port},
                  {hook_fun, State#state.hook_fun},
-                 {ice_bin_pid, State#state.ice_bin_pid},
-                 {ice_connector_pid, State#state.ice_connector_pid},
+                 {peer_pid, State#state.peer_pid},
                  {session_id, State#state.session_id},
                  {lifetime, Msg#stun.'LIFETIME'}
                  | if SockMod /= gen_udp ->
@@ -337,7 +335,6 @@ process(State, #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, Sec
                    end],
             case turn:start(Opts) of
                 {ok, Pid} ->
-                    State#state.ice_bin_pid ! {turn_server_started, Pid, self()},
                     cancel_timer(State#state.tref),
                     turn:route(Pid, Msg),
                     State;
@@ -549,10 +546,8 @@ prepare_state(Opts, Sock, Peer, SockMod) when is_list(Opts) ->
                             ({auth_type, Wrong}, State) ->
                                 ?LOG_ERROR("Wrong 'auth_type' value: ~p", [Wrong]),
                                 State;
-                            ({ice_bin_pid, ICEBinPid}, State) ->
-                                State#state{ice_bin_pid = ICEBinPid};
-                            ({ice_connector_pid, ICEConnectorPid}, State) ->
-                                State#state{ice_connector_pid = ICEConnectorPid};
+                            ({peer_pid, PeerPid}, State) ->
+                                State#state{peer_pid = PeerPid};
                             ({use_turn, _}, State) ->
                                 State;
                             (use_turn, State) ->

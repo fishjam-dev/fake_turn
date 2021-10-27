@@ -73,8 +73,7 @@
          hook_fun :: function() | undefined, session_id :: binary(),
          rcvd_bytes = 0 :: non_neg_integer(), rcvd_pkts = 0 :: non_neg_integer(),
          sent_bytes = 0 :: non_neg_integer(), sent_pkts = 0 :: non_neg_integer(),
-         ice_bin_pid :: pid(), ice_connector_pid :: pid(),
-         peer :: {inet:ip_address(), integer()} | undefined,
+         peer_pid :: pid(), peer :: {inet:ip_address(), integer()} | undefined,
          start_timestamp = get_timestamp() :: integer(), in_use :: boolean()}).
 
 %%====================================================================
@@ -115,8 +114,7 @@ init([Opts]) ->
                max_port = proplists:get_value(max_port, Opts),
                max_permissions = proplists:get_value(max_permissions, Opts),
                server_name = proplists:get_value(server_name, Opts),
-               ice_bin_pid = proplists:get_value(ice_bin_pid, Opts),
-               ice_connector_pid = proplists:get_value(ice_connector_pid, Opts),
+               peer_pid = proplists:get_value(peer_pid, Opts),
                username = Username,
                realm = Realm,
                addr = AddrPort,
@@ -296,7 +294,7 @@ active(#stun{class = indication,
                 State1 =
                     case State#state.in_use of
                         false ->
-                            State#state.ice_bin_pid ! {used_turn_pid, self()},
+                            State#state.peer_pid ! {used_turn_pid, self()},
                             State#state{in_use = true, peer = {Addr, Port}};
                         true ->
                             State
@@ -371,7 +369,7 @@ active(#turn{channel = Channel, data = Data}, State) ->
             State1 =
                 case State#state.in_use of
                     false ->
-                        State#state.ice_bin_pid ! {used_turn_pid, self()},
+                        State#state.peer_pid ! {used_turn_pid, self()},
                         State#state{in_use = true, peer = {Addr, Port}};
                     true ->
                         State
@@ -406,7 +404,7 @@ handle_info({udp, Sock, Addr, Port, Data}, StateName, State) ->
     State2 =
         case {State#state.peer, may_be_stun_packet(Data)} of
             {undefined, false} ->
-                State#state.ice_bin_pid ! {used_turn_pid, self()},
+                State#state.peer_pid ! {used_turn_pid, self()},
                 State1#state{peer = {Addr, Port}};
             _ ->
                 State1
@@ -437,9 +435,7 @@ handle_info({timeout, _Tref, {channel_timeout, Channel}}, StateName, State) ->
 handle_info({'DOWN', _Ref, _, _, _}, _StateName, State) ->
     {stop, normal, State};
 handle_info({ice_payload, Payload}, StateName, #state{in_use = false} = State) ->
-    % State#state.ice_bin_pid ! {used_turn_pid, self()},
     NewState = send_payload_to_client(Payload, State#state.peer, State),
-    % {next_state, StateName, NewState#state{in_use = true}};
     {next_state, StateName, NewState};
 handle_info({ice_payload, Payload}, StateName, State) ->
     NewState = send_payload_to_client(Payload, State#state.peer, State),
@@ -569,23 +565,15 @@ send_payload_to_client(Payload, Peer, State) ->
             State
     end.
 
-may_be_stun_packet(<<0:2, Type:14, _Tail/binary>> = _Pkt) ->
-    Method = ?STUN_METHOD(Type),
-    lists:member(Method,
-                 [?STUN_METHOD_BINDING,
-                  ?STUN_METHOD_ALLOCATE,
-                  ?STUN_METHOD_REFRESH,
-                  ?STUN_METHOD_SEND,
-                  ?STUN_METHOD_DATA,
-                  ?STUN_METHOD_CREATE_PERMISSION,
-                  ?STUN_METHOD_CHANNEL_BIND]);
+may_be_stun_packet(<<Head:8, _Tail/binary>>) when Head < 2 ->
+    true;
 may_be_stun_packet(_Pkt) ->
     false.
 
-maybe_send_to_ice_bin(#state{ice_connector_pid = ICEConnectorPid}, Payload) ->
-    case {erlang:is_pid(ICEConnectorPid), may_be_stun_packet(Payload)} of
+maybe_send_to_ice_bin(#state{peer_pid = PeerPid}, Payload) ->
+    case {erlang:is_pid(PeerPid), may_be_stun_packet(Payload)} of
         {true, false} ->
-            ICEConnectorPid ! {ice_payload, 1, 1, Payload},
+            PeerPid ! {ice_payload, 1, 1, Payload},
             true;
         _ ->
             false

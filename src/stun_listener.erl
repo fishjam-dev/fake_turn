@@ -145,9 +145,8 @@ start_listener(IP, Port, Transport, Opts, Owner)
         {ok, ListenSocket} ->
             {ok, PortNumber} = inet:port(ListenSocket),
             Owner ! {self(), {ok, PortNumber}},
-            {ICEBinPid, ICEConnectorPid} = receive_ice_pids(),
-            OptsWithTLS1 =
-                [{ice_bin_pid, ICEBinPid}, {ice_connector_pid, ICEConnectorPid}] ++ OptsWithTLS,
+            PeerPid = receive_peer_pid(),
+            OptsWithTLS1 = [{peer_pid, PeerPid}] ++ OptsWithTLS,
             OptsWithTLS2 = stun:tcp_init(ListenSocket, OptsWithTLS1),
             accept(ListenSocket, OptsWithTLS2);
         Err ->
@@ -158,8 +157,8 @@ start_listener(IP, Port, udp, Opts, Owner) ->
         {ok, Socket} ->
             {ok, PortNumber} = inet:port(Socket),
             Owner ! {self(), {ok, PortNumber}},
-            {ICEBinPid, ICEConnectorPid} = receive_ice_pids(),
-            NewOpts = [{ice_bin_pid, ICEBinPid}, {ice_connector_pid, ICEConnectorPid}] ++ Opts,
+            PeerPid = receive_peer_pid(),
+            NewOpts = [{peer_pid, PeerPid}] ++ Opts,
             stun_logger:set_metadata(listener, udp),
             NewOpts1 = stun:udp_init(Socket, NewOpts),
             udp_recv(Socket, NewOpts1);
@@ -226,8 +225,8 @@ format_listener_error(IP, Port, Transport, Opts, Err) ->
                "** Reason: ~p",
                [stun_logger:encode_addr(IP), Port, Transport, Opts, Err]).
 
-receive_ice_pids() ->
+receive_peer_pid() ->
     receive
-        {ice_pids, ICEBinPid, ICEConnectorPid} ->
-            {ICEBinPid, ICEConnectorPid}
+        {peer_pid, PeerPid} ->
+            PeerPid
     end.
