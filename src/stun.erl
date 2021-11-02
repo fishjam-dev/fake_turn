@@ -98,7 +98,7 @@ udp_recv(Sock, Addr, Port, Data, State) ->
     NewState = prepare_state(State, Sock, {Addr, Port}, gen_udp),
     case stun_codec:decode(Data, datagram) of
         {ok, Msg} ->
-            % ?LOG_DEBUG(#{verbatim => {"Received:~n~s", [stun_codec:pp(Msg)]}}),
+            ?LOG_DEBUG(#{verbatim => {"Received:~n~s", [stun_codec:pp(Msg)]}}),
             process(NewState, Msg);
         Err ->
             ?LOG_DEBUG("Cannot parse packet: ~p", [Err]),
@@ -372,7 +372,7 @@ process_data(NextStateName, #state{buf = Buf} = State, Data) ->
     NewBuf = <<Buf/binary, Data/binary>>,
     case stun_codec:decode(NewBuf, stream) of
         {ok, Msg, Tail} ->
-            % ?LOG_DEBUG(#{verbatim => {"Received B:~n~s", [stun_codec:pp(Msg)]}}),
+            ?LOG_DEBUG(#{verbatim => {"Received:~n~s", [stun_codec:pp(Msg)]}}),
             NewState = process(State, Msg),
             process_data(NextStateName, NewState#state{buf = <<>>}, Tail);
         empty ->
@@ -415,7 +415,7 @@ send(State, Msg) ->
     send(State, Msg, undefined).
 
 send(State, Msg, Pass) ->
-    % ?LOG_DEBUG(#{verbatim => {"Sending:~n~s", [stun_codec:pp(Msg)]}}),
+    ?LOG_DEBUG(#{verbatim => {"Sending:~n~s", [stun_codec:pp(Msg)]}}),
     send(State, stun_codec:encode(Msg, Pass)).
 
 route_on_turn(State, Msg) ->

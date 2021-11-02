@@ -36,8 +36,6 @@ start(Secret, Opts) ->
            Hash = crypto:mac(hmac, sha, Secret, User),
            base64:encode(Hash)
         end,
-
-    % TurnOpts = [{use_turn, true}, {auth_fun, Auth_fun}, {auth_realm, "turn.stun.localhost"}],
     TurnOpts =
         [{use_turn, true},
          {auth_fun, Auth_fun},

@@ -294,7 +294,7 @@ active(#stun{class = indication,
                 State1 =
                     case State#state.in_use of
                         false ->
-                            State#state.peer_pid ! {used_turn_pid, self()},
+                            State#state.peer_pid ! {selected_integrated_turn_pid, self()},
                             State#state{in_use = true, peer = {Addr, Port}};
                         true ->
                             State
@@ -369,7 +369,7 @@ active(#turn{channel = Channel, data = Data}, State) ->
             State1 =
                 case State#state.in_use of
                     false ->
-                        State#state.peer_pid ! {used_turn_pid, self()},
+                        State#state.peer_pid ! {selected_integrated_turn_pid, self()},
                         State#state{in_use = true, peer = {Addr, Port}};
                     true ->
                         State
@@ -402,9 +402,9 @@ handle_info({udp, Sock, Addr, Port, Data}, StateName, State) ->
     inet:setopts(Sock, [{active, once}]),
     State1 = send_payload_to_client(Data, {Addr, Port}, State),
     State2 =
-        case {State#state.peer, may_be_stun_packet(Data)} of
+        case {State#state.peer, is_stun_packet(Data)} of
             {undefined, false} ->
-                State#state.peer_pid ! {used_turn_pid, self()},
+                State#state.peer_pid ! {selected_integrated_turn_pid, self()},
                 State1#state{peer = {Addr, Port}};
             _ ->
                 State1
@@ -530,7 +530,7 @@ send(State, Pkt) when is_binary(Pkt) ->
            end
     end;
 send(State, Msg) ->
-    % ?LOG_DEBUG(#{verbatim => {"Sending:~n~s", [stun_codec:pp(Msg)]}}),
+    ?LOG_DEBUG(#{verbatim => {"Sending:~n~s", [stun_codec:pp(Msg)]}}),
     Key = State#state.key,
     case Msg of
         #stun{class = indication} ->
@@ -565,13 +565,13 @@ send_payload_to_client(Payload, Peer, State) ->
             State
     end.
 
-may_be_stun_packet(<<Head:8, _Tail/binary>>) when Head < 2 ->
+is_stun_packet(<<Head:8, _Tail/binary>>) when Head < 2 ->
     true;
-may_be_stun_packet(_Pkt) ->
+is_stun_packet(_Pkt) ->
     false.
 
 maybe_send_to_ice_bin(#state{peer_pid = PeerPid}, Payload) ->
-    case {erlang:is_pid(PeerPid), may_be_stun_packet(Payload)} of
+    case {erlang:is_pid(PeerPid), is_stun_packet(Payload)} of
         {true, false} ->
             PeerPid ! {ice_payload, 1, 1, Payload},
             true;
