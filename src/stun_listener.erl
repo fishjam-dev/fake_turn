@@ -99,11 +99,9 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({'DOWN', MRef, _Type, _Pid, Info}, State) ->
+handle_info({'DOWN', MRef, _Type, _Pid, _Info}, State) ->
     Listeners =
-        maps:filter(fun ({IP, Port, Transport}, {Ref, _, _}) when Ref == MRef ->
-                            ?LOG_ERROR("Listener on ~s (~s) failed: ~p",
-                                       [stun_logger:encode_addr({IP, Port}), Transport, Info]),
+        maps:filter(fun ({_IP, _Port, _Transport}, {Ref, _, _}) when Ref == MRef ->
                             false;
                         (_, _) ->
                             true
@@ -176,7 +174,7 @@ accept(ListenSocket, Opts) ->
         end,
     ID = stun_logger:make_id(),
     stun_logger:set_metadata(listener, Transport, ID),
-    case gen_tcp:accept(ListenSocket) of
+    case gen_tcp:accept(ListenSocket, 1000) of
         {ok, Socket} ->
             case {inet:peername(Socket), inet:sockname(Socket)} of
                 {{ok, {PeerAddr, PeerPort}}, {ok, {Addr, Port}}} ->
@@ -194,12 +192,19 @@ accept(ListenSocket, Opts) ->
                     Err
             end,
             accept(ListenSocket, Opts);
+        {error, timeout} ->
+            receive
+                terminate ->
+                    ok
+            after 0 ->
+                accept(ListenSocket, Opts)
+            end;
         Err ->
             Err
     end.
 
 udp_recv(Socket, Opts) ->
-    case gen_udp:recv(Socket, 0) of
+    case gen_udp:recv(Socket, 0, 1000) of
         {ok, {Addr, Port, Packet}} ->
             case catch stun:udp_recv(Socket, Addr, Port, Packet, Opts) of
                 {'EXIT', Reason} ->
@@ -210,6 +215,13 @@ udp_recv(Socket, Opts) ->
                     udp_recv(Socket, Opts);
                 NewOpts ->
                     udp_recv(Socket, NewOpts)
+            end;
+        {error, timeout} ->
+            receive
+                terminate ->
+                    ok
+            after 0 ->
+                udp_recv(Socket, Opts)
             end;
         {error, Reason} ->
             ?LOG_ERROR("Unexpected UDP error: ~s", [inet:format_error(Reason)]),
