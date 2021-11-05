@@ -61,7 +61,11 @@
 %% Comprehension-optional range (0x8000-0xFFFF)
 -define(STUN_ATTR_SOFTWARE, 16#8022).
 -define(STUN_ATTR_ALTERNATE_SERVER, 16#8023).
+-define(STUN_ATTR_PRIORITY, 16#0024).
+-define(STUN_ATTR_USE_CANDIDATE, 16#0025).
 -define(STUN_ATTR_FINGERPRINT, 16#8028).
+-define(STUN_ATTR_ICE_CONTROLLED, 16#0029).
+-define(STUN_ATTR_ICE_CONTROLLING, 16#002a).
 
 -record(stun,
         {class = request :: request | response | error | indication,
