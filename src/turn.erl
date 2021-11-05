@@ -299,7 +299,7 @@ active(#stun{class = indication,
                         true ->
                             State
                     end,
-                case maybe_send_to_ice_bin(State1, Data) of
+                case maybe_send_to_peer_pid(State1, Data) of
                     false ->
                         gen_udp:send(State1#state.relay_sock, Addr, Port, Data);
                     true ->
@@ -374,7 +374,7 @@ active(#turn{channel = Channel, data = Data}, State) ->
                     true ->
                         State
                 end,
-            case maybe_send_to_ice_bin(State1, Data) of
+            case maybe_send_to_peer_pid(State1, Data) of
                 false ->
                     gen_udp:send(State1#state.relay_sock, Addr, Port, Data);
                 true ->
@@ -570,7 +570,7 @@ is_stun_packet(<<Head:8, _Tail/binary>>) when Head < 2 ->
 is_stun_packet(_Pkt) ->
     false.
 
-maybe_send_to_ice_bin(#state{peer_pid = PeerPid}, Payload) ->
+maybe_send_to_peer_pid(#state{peer_pid = PeerPid}, Payload) ->
     case {erlang:is_pid(PeerPid), is_stun_packet(Payload)} of
         {true, false} ->
             PeerPid ! {ice_payload, 1, 1, Payload},

@@ -23,7 +23,7 @@
 
 -module(turn_starter).
 
--export([start/2]).
+-export([start/2, stop/3]).
 
 -include("stun.hrl").
 
@@ -42,3 +42,6 @@ start(Secret, Opts) ->
          {auth_realm, "turn.stun.localhost"},
          {turn_ipv4_address, IP}],
     stun_listener:add_listener(IP, Port, Transport, TurnOpts).
+
+stop(IP, Port, Transport) ->
+    stun_listener:del_listener(IP, Port, Transport).
