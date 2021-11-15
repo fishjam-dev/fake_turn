@@ -163,7 +163,7 @@ error(443) ->
     {443, <<"Peer Address Family Mismatch">>};
 error(486) ->
     {486, <<"Allocation Quota Reached">>};
-error(487) -> 
+error(487) ->
     {487, <<"Role Conflict">>};
 error(500) ->
     {500, <<"Server Error">>};
