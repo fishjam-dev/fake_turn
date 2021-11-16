@@ -39,13 +39,15 @@ start(Secret, Opts) ->
            Hash = crypto:mac(hmac, sha, Secret, User),
            base64:encode(Hash)
         end,
+    PeerPid = proplists:get_value(peer_pid, Opts),
     TurnOpts =
         [{use_turn, true},
          {auth_fun, Auth_fun},
          {auth_realm, "turn.stun.localhost"},
          {turn_ipv4_address, IP},
          {turn_min_port, AllocMinPort},
-         {turn_max_port, AllocMaxPort}],
+         {turn_max_port, AllocMaxPort},
+         {peer_pid, PeerPid}],
     stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
 
 stop(IP, Port, Transport) ->
