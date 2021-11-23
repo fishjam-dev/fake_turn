@@ -48,7 +48,7 @@ start(Secret, Opts) ->
          {turn_min_port, AllocMinPort},
          {turn_max_port, AllocMaxPort},
          {peer_pid, PeerPid}],
-    stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
+    stun_listener:add_listener({0, 0, 0, 0}, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
 
 stop(IP, Port, Transport) ->
-    stun_listener:del_listener(IP, Port, Transport).
+    stun_listener:del_listener({0, 0, 0, 0}, Port, Transport).

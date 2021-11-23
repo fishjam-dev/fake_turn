@@ -185,7 +185,8 @@ wait_for_allocate(#stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, 
            R = Resp#stun{class = error, 'ERROR-CODE' = stun_codec:error(403)},
            {stop, normal, send(State, R)};
        true ->
-           RelayIP =
+           RelayIP = {0, 0, 0, 0},
+           PreparedRelayIP =
                case Family of
                    inet ->
                        State#state.relay_ipv4_ip;
@@ -202,7 +203,7 @@ wait_for_allocate(#stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, 
                                "(lifetime: ~B seconds)",
                                [Lifetime]),
                    R = Resp#stun{class = response,
-                                 'XOR-RELAYED-ADDRESS' = RelayAddr,
+                                 'XOR-RELAYED-ADDRESS' = {PreparedRelayIP, RelayPort},
                                  'LIFETIME' = Lifetime,
                                  'XOR-MAPPED-ADDRESS' = AddrPort},
                    NewState = send(State, R),
