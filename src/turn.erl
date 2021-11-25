@@ -66,6 +66,7 @@
          permissions = #{} :: map(), max_permissions :: non_neg_integer() | atom() | undefined,
          relay_ipv4_ip = {127, 0, 0, 1} :: inet:ip4_address(),
          relay_ipv6_ip :: inet:ip6_address() | undefined, min_port = 49152 :: non_neg_integer(),
+         prepared_relay_ip = {127, 0, 0, 1} :: inet:ip4_address(),
          max_port = 65535 :: non_neg_integer(), relay_addr :: addr() | undefined,
          relay_sock :: inet:socket() | undefined, last_trid :: non_neg_integer() | undefined,
          last_pkt = <<>> :: binary(), seq = 1 :: non_neg_integer(),
@@ -110,6 +111,7 @@ init([Opts]) ->
                key = proplists:get_value(key, Opts),
                relay_ipv4_ip = proplists:get_value(relay_ipv4_ip, Opts),
                relay_ipv6_ip = proplists:get_value(relay_ipv6_ip, Opts),
+               prepared_relay_ip = proplists:get_value(prepared_relay_ip, Opts),
                min_port = proplists:get_value(min_port, Opts),
                max_port = proplists:get_value(max_port, Opts),
                max_permissions = proplists:get_value(max_permissions, Opts),
@@ -185,14 +187,14 @@ wait_for_allocate(#stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, 
            R = Resp#stun{class = error, 'ERROR-CODE' = stun_codec:error(403)},
            {stop, normal, send(State, R)};
        true ->
-           RelayIP = {0, 0, 0, 0},
-           PreparedRelayIP =
+           RelayIP =
                case Family of
                    inet ->
                        State#state.relay_ipv4_ip;
                    inet6 ->
                        State#state.relay_ipv6_ip
                end,
+           PreparedRelayIP = State#state.prepared_relay_ip,
            case allocate_addr(Family, RelayIP, {State#state.min_port, State#state.max_port}) of
                {ok, RelayPort, RelaySock} ->
                    Lifetime = time_left(State#state.life_timer),

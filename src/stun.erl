@@ -57,6 +57,7 @@
          use_turn = false :: boolean(),
          relay_ipv4_ip = {127, 0, 0, 1} :: inet:ip4_address(),
          relay_ipv6_ip :: inet:ip6_address() | undefined,
+         prepared_relay_ip = {127, 0, 0, 1} :: inet:ip4_address(),
          min_port = 49152 :: non_neg_integer(),
          max_port = 65535 :: non_neg_integer(),
          max_allocs = 10 :: non_neg_integer() | infinity,
@@ -322,6 +323,7 @@ process(State, #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, Sec
                  {addr, AddrPort},
                  {relay_ipv4_ip, State#state.relay_ipv4_ip},
                  {relay_ipv6_ip, State#state.relay_ipv6_ip},
+                 {prepared_relay_ip, State#state.prepared_relay_ip},
                  {min_port, State#state.min_port},
                  {max_port, State#state.max_port},
                  {hook_fun, State#state.hook_fun},
@@ -473,6 +475,15 @@ prepare_state(Opts, Sock, Peer, SockMod) when is_list(Opts) ->
                                         State#state{relay_ipv6_ip = Addr};
                                     {error, _} ->
                                         ?LOG_ERROR("Wrong 'turn_ipv6_address' value: ~p", [IP]),
+                                        State
+                                end;
+                            ({prepared_turn_ipv4_address, PreparedIP}, State) ->
+                                case prepare_addr(PreparedIP) of
+                                    {ok, Addr} ->
+                                        State#state{prepared_relay_ip = Addr};
+                                    {error, _} ->
+                                        ?LOG_ERROR("Wrong 'prepared_turn_ipv4_address' value: ~p",
+                                                   [PreparedIP]),
                                         State
                                 end;
                             ({turn_min_port, Min}, State)

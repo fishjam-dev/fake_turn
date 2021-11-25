@@ -28,7 +28,8 @@
 -include("stun.hrl").
 
 start(Secret, Opts) ->
-    IP = proplists:get_value(ip, Opts, {127, 0, 0, 1}),
+    IP = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
+    PreparedIP = proplists:get_value(prepared_ip, Opts, {127, 0, 0, 0}),
     Transport = proplists:get_value(transport, Opts, udp),
     {ClientMinPort, ClientMaxPort} =
         proplists:get_value(client_port_range, Opts, {50_000, 50_499}),
@@ -45,10 +46,11 @@ start(Secret, Opts) ->
          {auth_fun, Auth_fun},
          {auth_realm, "turn.stun.localhost"},
          {turn_ipv4_address, IP},
+         {prepared_turn_ipv4_address, PreparedIP},
          {turn_min_port, AllocMinPort},
          {turn_max_port, AllocMaxPort},
          {peer_pid, PeerPid}],
-    stun_listener:add_listener({0, 0, 0, 0}, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
+    stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
 
 stop(IP, Port, Transport) ->
-    stun_listener:del_listener({0, 0, 0, 0}, Port, Transport).
+    stun_listener:del_listener(IP, Port, Transport).
