@@ -40,7 +40,7 @@ start(Secret, Opts) ->
            Hash = crypto:mac(hmac, sha, Secret, User),
            base64:encode(Hash)
         end,
-    PeerPid = proplists:get_value(peer_pid, Opts),
+    Parent = proplists:get_value(parent, Opts),
     TurnOpts =
         [{use_turn, true},
          {auth_fun, Auth_fun},
@@ -49,7 +49,7 @@ start(Secret, Opts) ->
          {mock_turn_ipv4_address, MockIP},
          {turn_min_port, AllocMinPort},
          {turn_max_port, AllocMaxPort},
-         {peer_pid, PeerPid}],
+         {parent, Parent}],
     stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
 
 stop(IP, Port, Transport) ->

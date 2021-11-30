@@ -73,8 +73,8 @@
          life_timer :: reference() | undefined, blacklist = [] :: blacklist(),
          hook_fun :: function() | undefined, session_id :: binary(),
          rcvd_bytes = 0 :: non_neg_integer(), rcvd_pkts = 0 :: non_neg_integer(),
-         sent_bytes = 0 :: non_neg_integer(), sent_pkts = 0 :: non_neg_integer(),
-         peer_pid :: pid(), peer :: {inet:ip_address(), integer()} | undefined,
+         sent_bytes = 0 :: non_neg_integer(), sent_pkts = 0 :: non_neg_integer(), parent :: pid(),
+         peer :: {inet:ip_address(), integer()} | undefined,
          start_timestamp = get_timestamp() :: integer(), in_use :: boolean()}).
 
 %%====================================================================
@@ -116,7 +116,7 @@ init([Opts]) ->
                max_port = proplists:get_value(max_port, Opts),
                max_permissions = proplists:get_value(max_permissions, Opts),
                server_name = proplists:get_value(server_name, Opts),
-               peer_pid = proplists:get_value(peer_pid, Opts),
+               parent = proplists:get_value(parent, Opts),
                username = Username,
                realm = Realm,
                addr = AddrPort,
@@ -297,12 +297,12 @@ active(#stun{class = indication,
                 State1 =
                     case State#state.in_use of
                         false ->
-                            State#state.peer_pid ! {selected_integrated_turn_pid, self()},
+                            State#state.parent ! {selected_integrated_turn_pid, self()},
                             State#state{in_use = true, peer = {Addr, Port}};
                         true ->
                             State
                     end,
-                case maybe_send_to_peer_pid(State1, Data) of
+                case maybe_send_to_parent(State1, Data) of
                     false ->
                         gen_udp:send(State1#state.relay_sock, Addr, Port, Data);
                     true ->
@@ -372,12 +372,12 @@ active(#turn{channel = Channel, data = Data}, State) ->
             State1 =
                 case State#state.in_use of
                     false ->
-                        State#state.peer_pid ! {selected_integrated_turn_pid, self()},
+                        State#state.parent ! {selected_integrated_turn_pid, self()},
                         State#state{in_use = true, peer = {Addr, Port}};
                     true ->
                         State
                 end,
-            case maybe_send_to_peer_pid(State1, Data) of
+            case maybe_send_to_parent(State1, Data) of
                 false ->
                     gen_udp:send(State1#state.relay_sock, Addr, Port, Data);
                 true ->
@@ -407,7 +407,7 @@ handle_info({udp, Sock, Addr, Port, Data}, StateName, State) ->
     State2 =
         case {State#state.peer, is_stun_packet(Data)} of
             {undefined, false} ->
-                State#state.peer_pid ! {selected_integrated_turn_pid, self()},
+                State#state.parent ! {selected_integrated_turn_pid, self()},
                 State1#state{peer = {Addr, Port}};
             _ ->
                 State1
@@ -573,10 +573,10 @@ is_stun_packet(<<Head:8, _Tail/binary>>) when Head < 2 ->
 is_stun_packet(_Pkt) ->
     false.
 
-maybe_send_to_peer_pid(#state{peer_pid = PeerPid}, Payload) ->
-    case {erlang:is_pid(PeerPid), is_stun_packet(Payload)} of
+maybe_send_to_parent(#state{parent = Parent}, Payload) ->
+    case {erlang:is_pid(Parent), is_stun_packet(Payload)} of
         {true, false} ->
-            PeerPid ! {ice_payload, 1, 1, Payload},
+            Parent ! {ice_payload, 1, 1, Payload},
             true;
         _ ->
             false
