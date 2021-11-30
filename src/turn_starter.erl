@@ -29,7 +29,7 @@
 
 start(Secret, Opts) ->
     IP = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
-    PreparedIP = proplists:get_value(prepared_ip, Opts, {127, 0, 0, 0}),
+    MockIP = proplists:get_value(mock_ip, Opts, {127, 0, 0, 0}),
     Transport = proplists:get_value(transport, Opts, udp),
     {ClientMinPort, ClientMaxPort} =
         proplists:get_value(client_port_range, Opts, {50_000, 50_499}),
@@ -46,7 +46,7 @@ start(Secret, Opts) ->
          {auth_fun, Auth_fun},
          {auth_realm, "turn.stun.localhost"},
          {turn_ipv4_address, IP},
-         {prepared_turn_ipv4_address, PreparedIP},
+         {mock_turn_ipv4_address, MockIP},
          {turn_min_port, AllocMinPort},
          {turn_max_port, AllocMaxPort},
          {peer_pid, PeerPid}],
