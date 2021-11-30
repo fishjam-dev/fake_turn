@@ -226,14 +226,14 @@ open_socket(MinPort, MaxPort, OpenSockFunc) ->
     Next = MinPort + stun:rand_uniform(Count + 1) - 1,
     open_socket(MinPort, MaxPort, OpenSockFunc, Next, Count).
 
-open_socket(_MinPort, _MaxPort, _OpenSockFunc, _Next, 0) ->
+open_socket(_MinPort, _MaxPort, _OpenSockFunc, _Next, -1) ->
     {error, eaddrinuse};
 open_socket(MinPort, MaxPort, OpenSockFunc, Next, Count) ->
     case OpenSockFunc(Next) of
         {ok, Sock} ->
             {ok, Sock};
         {error, eaddrinuse} ->
-            if Count == MaxPort ->
+            if Next == MaxPort ->
                    open_socket(MinPort, MaxPort, OpenSockFunc, MinPort, Count - 1);
                true ->
                    open_socket(MinPort, MaxPort, OpenSockFunc, Next + 1, Count - 1)
