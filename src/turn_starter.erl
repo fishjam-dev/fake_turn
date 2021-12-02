@@ -28,9 +28,13 @@
 -include("stun.hrl").
 
 start(Secret, Opts) ->
-    IP = proplists:get_value(ip, Opts, {127, 0, 0, 1}),
-    Port = proplists:get_value(port, Opts, 0),
+    IP = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
+    MockIP = proplists:get_value(mock_ip, Opts, {127, 0, 0, 0}),
     Transport = proplists:get_value(transport, Opts, udp),
+    {ClientMinPort, ClientMaxPort} =
+        proplists:get_value(client_port_range, Opts, {50_000, 50_499}),
+    {AllocMinPort, AllocMaxPort} =
+        proplists:get_value(alloc_port_range, Opts, {50_500, 50_999}),
     Auth_fun =
         fun(User, _Realm) ->
            Hash = crypto:mac(hmac, sha, Secret, User),
@@ -42,8 +46,11 @@ start(Secret, Opts) ->
          {auth_fun, Auth_fun},
          {auth_realm, "turn.stun.localhost"},
          {turn_ipv4_address, IP},
+         {mock_turn_ipv4_address, MockIP},
+         {turn_min_port, AllocMinPort},
+         {turn_max_port, AllocMaxPort},
          {peer_pid, PeerPid}],
-    stun_listener:add_listener(IP, Port, Transport, TurnOpts).
+    stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
 
 stop(IP, Port, Transport) ->
     stun_listener:del_listener(IP, Port, Transport).

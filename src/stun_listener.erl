@@ -26,7 +26,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, add_listener/4, del_listener/3, start_listener/5]).
+-export([start_link/0, add_listener/5, del_listener/3, start_listener/6]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -43,8 +43,8 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-add_listener(IP, Port, Transport, Opts) ->
-    gen_server:call(?MODULE, {add_listener, IP, Port, Transport, Opts}).
+add_listener(IP, MinPort, MaxPort, Transport, Opts) ->
+    gen_server:call(?MODULE, {add_listener, IP, MinPort, MaxPort, Transport, Opts}).
 
 del_listener(IP, Port, Transport) ->
     gen_server:call(?MODULE, {del_listener, IP, Port, Transport}).
@@ -55,31 +55,25 @@ del_listener(IP, Port, Transport) ->
 init([]) ->
     {ok, #state{}}.
 
-handle_call({add_listener, IP, Port, Transport, Opts}, _From, State) ->
-    case maps:find({IP, Port, Transport}, State#state.listeners) of
-        {ok, _} ->
-            Err = {error, already_started},
-            {reply, Err, State};
-        error ->
-            {Pid, MRef} =
-                spawn_monitor(?MODULE, start_listener, [IP, Port, Transport, Opts, self()]),
-            receive
-                {'DOWN', MRef, _Type, _Object, Info} ->
-                    Res = {error, Info},
-                    format_listener_error(IP, Port, Transport, Opts, Res),
-                    {reply, Res, State};
-                {Pid, Reply} ->
-                    case Reply of
-                        {error, _} = Err ->
-                            format_listener_error(IP, Port, Transport, Opts, Err),
-                            {reply, Reply, State};
-                        {ok, UsedPort} ->
-                            Listeners =
-                                maps:put({IP, UsedPort, Transport},
-                                         {MRef, Pid, Opts},
-                                         State#state.listeners),
-                            {reply, {ok, UsedPort, Pid}, State#state{listeners = Listeners}}
-                    end
+handle_call({add_listener, IP, MinPort, MaxPort, Transport, Opts}, _From, State) ->
+    {Pid, MRef} =
+        spawn_monitor(?MODULE, start_listener, [IP, MinPort, MaxPort, Transport, Opts, self()]),
+    receive
+        {'DOWN', MRef, _Type, _Object, Info} ->
+            Res = {error, Info},
+            format_listener_error(IP, MinPort, MaxPort, Transport, Opts, Res),
+            {reply, Res, State};
+        {Pid, Reply} ->
+            case Reply of
+                {error, _} = Err ->
+                    format_listener_error(IP, MinPort, MaxPort, Transport, Opts, Err),
+                    {reply, Reply, State};
+                {ok, UsedPort} ->
+                    Listeners =
+                        maps:put({IP, UsedPort, Transport},
+                                 {MRef, Pid, Opts},
+                                 State#state.listeners),
+                    {reply, {ok, UsedPort, Pid}, State#state{listeners = Listeners}}
             end
     end;
 handle_call({del_listener, IP, Port, Transport}, _From, State) ->
@@ -122,8 +116,21 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-start_listener(IP, Port, Transport, Opts, Owner)
+start_listener(IP, MinPort, MaxPort, Transport, Opts, Owner)
     when Transport == tcp; Transport == tls ->
+    OpenFun =
+        fun(Port) ->
+           gen_tcp:listen(Port,
+                          [binary,
+                           {ip, IP},
+                           {packet, 0},
+                           {active, false},
+                           {reuseaddr, true},
+                           {nodelay, true},
+                           {keepalive, true},
+                           {send_timeout, ?TCP_SEND_TIMEOUT},
+                           {send_timeout_close, true}])
+        end,
     OptsWithTLS =
         case Transport of
             tls ->
@@ -131,17 +138,7 @@ start_listener(IP, Port, Transport, Opts, Owner)
             tcp ->
                 Opts
         end,
-    case gen_tcp:listen(Port,
-                        [binary,
-                         {ip, IP},
-                         {packet, 0},
-                         {active, false},
-                         {reuseaddr, true},
-                         {nodelay, true},
-                         {keepalive, true},
-                         {send_timeout, ?TCP_SEND_TIMEOUT},
-                         {send_timeout_close, true}])
-    of
+    case open_socket(MinPort, MaxPort, OpenFun) of
         {ok, ListenSocket} ->
             {ok, PortNumber} = inet:port(ListenSocket),
             Owner ! {self(), {ok, PortNumber}},
@@ -150,8 +147,11 @@ start_listener(IP, Port, Transport, Opts, Owner)
         Err ->
             Owner ! {self(), Err}
     end;
-start_listener(IP, Port, udp, Opts, Owner) ->
-    case gen_udp:open(Port, [binary, {ip, IP}, {active, false}, {reuseaddr, true}]) of
+start_listener(IP, MinPort, MaxPort, udp, Opts, Owner) ->
+    OpenFun =
+        fun(Port) -> gen_udp:open(Port, [binary, {ip, IP}, {active, false}, {reuseaddr, true}])
+        end,
+    case open_socket(MinPort, MaxPort, OpenFun) of
         {ok, Socket} ->
             {ok, PortNumber} = inet:port(Socket),
             Owner ! {self(), {ok, PortNumber}},
@@ -212,11 +212,32 @@ udp_recv(Socket, Opts) ->
             erlang:error(Reason)
     end.
 
-format_listener_error(IP, Port, Transport, Opts, Err) ->
+format_listener_error(IP, MinPort, MaxPort, Transport, Opts, Err) ->
     ?LOG_ERROR("Cannot start listener:~n"
                "** IP: ~s~n"
-               "** Port: ~B~n"
+               "** PortRage: ~B-~B~n"
                "** Transport: ~s~n"
                "** Options: ~p~n"
                "** Reason: ~p",
-               [stun_logger:encode_addr(IP), Port, Transport, Opts, Err]).
+               [stun_logger:encode_addr(IP), MinPort, MaxPort, Transport, Opts, Err]).
+
+open_socket(MinPort, MaxPort, OpenSockFunc) ->
+    Count = MaxPort - MinPort,
+    Next = MinPort + stun:rand_uniform(Count + 1) - 1,
+    open_socket(MinPort, MaxPort, OpenSockFunc, Next, Count).
+
+open_socket(_MinPort, _MaxPort, _OpenSockFunc, _Next, -1) ->
+    {error, eaddrinuse};
+open_socket(MinPort, MaxPort, OpenSockFunc, Next, Count) ->
+    case OpenSockFunc(Next) of
+        {ok, Sock} ->
+            {ok, Sock};
+        {error, eaddrinuse} ->
+            if Next == MaxPort ->
+                   open_socket(MinPort, MaxPort, OpenSockFunc, MinPort, Count - 1);
+               true ->
+                   open_socket(MinPort, MaxPort, OpenSockFunc, Next + 1, Count - 1)
+            end;
+        Err ->
+            Err
+    end.
