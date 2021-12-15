@@ -22,16 +22,16 @@
 %%%----------------------------------------------------------------------
 
 {application,
- stun,
- [{description, "STUN and TURN library for Erlang / Elixir"},
-  {vsn, "1.0.44"},
+ fake_turn,
+ [{description, "TURN serving as an endpoint to Membrane SFU. Forked from https://github.com/processone/stun"},
+  {vsn, "0.1.0"},
   {modules, []},
   {registered, []},
   {applications, [kernel, stdlib, fast_tls, p1_utils]},
   {mod, {stun_app, []}},
   %% hex.pm packaging:
   {licenses, ["Apache 2.0"]},
-  {links, [{"Github", "https://github.com/processone/stun"}]}]}.
+  {links, [{"Github", "https://github.com/membraneframework/fake_turn"}]}]}.
 
 %% Local Variables:
 %% mode: erlang
