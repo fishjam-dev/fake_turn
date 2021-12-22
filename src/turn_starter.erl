@@ -31,6 +31,7 @@ start(Secret, Opts) ->
     IP = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
     MockIP = proplists:get_value(mock_ip, Opts, {127, 0, 0, 0}),
     Transport = proplists:get_value(transport, Opts, udp),
+    FakeCandAddr = proplists:get_value(fake_candidate_addr, Opts),
     {ClientMinPort, ClientMaxPort} =
         proplists:get_value(client_port_range, Opts, {50_000, 50_499}),
     {AllocMinPort, AllocMaxPort} =
@@ -41,6 +42,7 @@ start(Secret, Opts) ->
            base64:encode(Hash)
         end,
     Parent = proplists:get_value(parent, Opts),
+    ElixirICEImpl= proplists:get_value(elixir_ice_impl, Opts),
     TurnOpts =
         [{use_turn, true},
          {auth_fun, Auth_fun},
@@ -49,7 +51,9 @@ start(Secret, Opts) ->
          {mock_turn_ipv4_address, MockIP},
          {turn_min_port, AllocMinPort},
          {turn_max_port, AllocMaxPort},
-         {parent, Parent}],
+         {parent, Parent},
+         {fake_candidate_addr, FakeCandAddr},
+         {elixir_ice_impl, ElixirICEImpl}],
     stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
 
 stop(IP, Port, Transport) ->
