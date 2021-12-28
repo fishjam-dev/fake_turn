@@ -4,7 +4,7 @@
 
 Forked from https://github.com/processone/stun.
 
-TURN serving as an endpoint to Membrane SFU. See https://blog.swmansion.com/how-we-made-membrane-sfu-less-ice-y-34ac8ce8d97c for more information.
+TURN serving as an endpoint to Membrane RTC Engine. See https://blog.swmansion.com/how-we-made-membrane-sfu-less-ice-y-34ac8ce8d97c for more information.
 
 This fork is maintained by [Software Mansion](https://swmansion.com/?utm_source=git&utm_medium=readme&utm_campaign=membrane)
 
