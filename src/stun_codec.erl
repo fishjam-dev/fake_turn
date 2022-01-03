@@ -106,6 +106,7 @@ encode(#stun{class = Class,
                end,
            Data = <<0:2, Type:14, (Len + 24):16, Magic:32, TrID:96, Attrs/binary>>,
            MessageIntegrity = crypto:mac(hmac, sha, NewKey, Data),
+           %    MessageIntegrity = <<0:160>>,
            <<Data/binary, ?STUN_ATTR_MESSAGE_INTEGRITY:16, 20:16, MessageIntegrity/binary>>;
        true ->
            <<0:2, Type:14, Len:16, Magic:32, TrID:96, Attrs/binary>>
@@ -231,6 +232,10 @@ enc_attrs(Msg) ->
                       enc_error_code(Msg#stun.'ERROR-CODE'),
                       enc_uint32(?STUN_ATTR_LIFETIME, Msg#stun.'LIFETIME'),
                       enc_chan(Msg#stun.'CHANNEL-NUMBER'),
+                      enc_use_cand(Msg#stun.'USE-CANDIDATE'),
+                      enc_ice_controlled(Msg#stun.'ICE-CONTROLLED'),
+                      enc_ice_controlling(Msg#stun.'ICE-CONTROLLING'),
+                      enc_priority(Msg#stun.'PRIORITY'),
                       enc_unknown_attrs(Msg#stun.'UNKNOWN-ATTRIBUTES')]).
 
 dec_attr(?STUN_ATTR_MAPPED_ADDRESS, Val, Msg) ->
@@ -299,6 +304,18 @@ dec_attr(?STUN_ATTR_DONT_FRAGMENT, _Val, Msg) ->
 dec_attr(?STUN_ATTR_CHANNEL_NUMBER, Val, Msg) ->
     <<Channel:16, _:16>> = Val,
     Msg#stun{'CHANNEL-NUMBER' = Channel};
+dec_attr(?STUN_ATTR_USE_CANDIDATE, Val, Msg) ->
+    % erlang:display({"dupa use candidate", Val}),
+    Msg#stun{'USE-CANDIDATE' = true};
+dec_attr(?STUN_ATTR_ICE_CONTROLLED, Val, Msg) ->
+    % erlang:display({"dupa ice controlled", Val}),
+    Msg#stun{'ICE-CONTROLLED' = true};
+dec_attr(?STUN_ATTR_ICE_CONTROLLING, Val, Msg) ->
+    % erlang:display({"dupa ice controlling", Val}),
+    Msg#stun{'ICE-CONTROLLING' = true};
+dec_attr(?STUN_ATTR_PRIORITY, Val, Msg) ->
+    <<Priority:32>> = Val,
+    Msg#stun{'PRIORITY' = Priority};
 dec_attr(Attr, _Val, #stun{unsupported = Attrs} = Msg) when Attr < 16#8000 ->
     Msg#stun{unsupported = [Attr | Attrs]};
 dec_attr(_Attr, _Val, Msg) ->
@@ -360,7 +377,10 @@ enc_xor_peer_addr(Magic, TrID, AddrPortList) ->
 
 enc_error_code(undefined) ->
     <<>>;
+enc_error_code({undefined, _Sth}) ->
+    <<>>;
 enc_error_code({Code, Reason}) ->
+    % erlang:display({"error debug", Code, Reason}),
     Class = Code div 100,
     Number = Code rem 100,
     enc_attr(?STUN_ATTR_ERROR_CODE, <<0:21, Class:3, Number:8, Reason/binary>>).
@@ -391,6 +411,26 @@ enc_df(false) ->
     <<>>;
 enc_df(true) ->
     enc_attr(?STUN_ATTR_DONT_FRAGMENT, <<>>).
+
+enc_use_cand(false) ->
+    <<>>;
+enc_use_cand(true) ->
+    enc_attr(?STUN_ATTR_USE_CANDIDATE, <<>>).
+
+enc_ice_controlled(false) ->
+    <<>>;
+enc_ice_controlled(true) ->
+    enc_attr(?STUN_ATTR_ICE_CONTROLLED, <<>>).
+
+enc_ice_controlling(false) ->
+    <<>>;
+enc_ice_controlling(true) ->
+    enc_attr(?STUN_ATTR_ICE_CONTROLLING, <<>>).
+
+enc_priority(undefined) ->
+    <<>>;
+enc_priority(Priority) ->
+    enc_attr(?STUN_ATTR_PRIORITY, <<Priority:32>>).
 
 enc_chan(undefined) ->
     <<>>;

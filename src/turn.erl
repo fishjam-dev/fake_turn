@@ -68,14 +68,14 @@
          relay_ipv6_ip :: inet:ip6_address() | undefined, min_port = 49152 :: non_neg_integer(),
          mock_relay_ip = {127, 0, 0, 1} :: inet:ip4_address(),
          max_port = 65535 :: non_neg_integer(), relay_addr :: addr() | undefined,
-         relay_sock :: inet:socket() | undefined, last_trid :: non_neg_integer() | undefined,
-         last_pkt = <<>> :: binary(), seq = 1 :: non_neg_integer(),
-         life_timer :: reference() | undefined, blacklist = [] :: blacklist(),
-         hook_fun :: function() | undefined, session_id :: binary(),
+         last_trid :: non_neg_integer() | undefined, last_pkt = <<>> :: binary(),
+         seq = 1 :: non_neg_integer(), life_timer :: reference() | undefined,
+         blacklist = [] :: blacklist(), hook_fun :: function() | undefined, session_id :: binary(),
          rcvd_bytes = 0 :: non_neg_integer(), rcvd_pkts = 0 :: non_neg_integer(),
          sent_bytes = 0 :: non_neg_integer(), sent_pkts = 0 :: non_neg_integer(), parent :: pid(),
-         peer :: {inet:ip_address(), integer()} | undefined,
-         start_timestamp = get_timestamp() :: integer(), in_use :: boolean()}).
+         start_timestamp = get_timestamp() :: integer(),
+         fake_candidate_addr :: {inet:ip4_address(), inet:port_number()},
+         elixir_ice_impl :: boolean(), server_pid :: pid()}).
 
 %%====================================================================
 %% API
@@ -117,14 +117,16 @@ init([Opts]) ->
                max_permissions = proplists:get_value(max_permissions, Opts),
                server_name = proplists:get_value(server_name, Opts),
                parent = proplists:get_value(parent, Opts),
+               fake_candidate_addr = proplists:get_value(fake_candidate_addr, Opts),
+               elixir_ice_impl = proplists:get_value(elixir_ice_impl, Opts),
+               server_pid = proplists:get_value(server_pid, Opts),
                username = Username,
                realm = Realm,
                addr = AddrPort,
                session_id = ID,
                owner = Owner,
                hook_fun = HookFun,
-               blacklist = Blacklist,
-               in_use = false},
+               blacklist = Blacklist},
     stun_logger:set_metadata(turn, SockMod, ID, AddrPort, Username),
     MaxAllocs = proplists:get_value(max_allocs, Opts),
     if is_pid(Owner) ->
@@ -187,36 +189,17 @@ wait_for_allocate(#stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, 
            R = Resp#stun{class = error, 'ERROR-CODE' = stun_codec:error(403)},
            {stop, normal, send(State, R)};
        true ->
-           RelayIP =
-               case Family of
-                   inet ->
-                       State#state.relay_ipv4_ip;
-                   inet6 ->
-                       State#state.relay_ipv6_ip
-               end,
-           MockRelayIP = State#state.mock_relay_ip,
-           case allocate_addr(Family, RelayIP, {State#state.min_port, State#state.max_port}) of
-               {ok, RelayPort, RelaySock} ->
-                   Lifetime = time_left(State#state.life_timer),
-                   AddrPort = stun:unmap_v4_addr(State#state.addr),
-                   RelayAddr = {RelayIP, RelayPort},
-                   stun_logger:add_metadata(#{stun_relay => stun_logger:encode_addr(RelayAddr)}),
-                   ?LOG_NOTICE("Creating TURN allocation "
-                               "(lifetime: ~B seconds)",
-                               [Lifetime]),
-                   R = Resp#stun{class = response,
-                                 'XOR-RELAYED-ADDRESS' = {MockRelayIP, RelayPort},
-                                 'LIFETIME' = Lifetime,
-                                 'XOR-MAPPED-ADDRESS' = AddrPort},
-                   NewState = send(State, R),
-                   {next_state,
-                    active,
-                    NewState#state{relay_sock = RelaySock, relay_addr = RelayAddr}};
-               Err ->
-                   ?LOG_ERROR("Cannot allocate TURN relay: ~s", [format_error(Err)]),
-                   R = Resp#stun{class = error, 'ERROR-CODE' = stun_codec:error(508)},
-                   {stop, normal, send(State, R)}
-           end
+           MockRelayPort = stun:rand_uniform(State#state.min_port, State#state.max_port),
+           MockRelayAddr = {State#state.mock_relay_ip, MockRelayPort},
+           Lifetime = time_left(State#state.life_timer),
+           AddrPort = stun:unmap_v4_addr(State#state.addr),
+           R = Resp#stun{class = response,
+                         'XOR-RELAYED-ADDRESS' = MockRelayAddr,
+                         'LIFETIME' = Lifetime,
+                         'XOR-MAPPED-ADDRESS' = AddrPort},
+           NewState = send(State, R),
+           State#state.parent ! {creating_alloc, self()},
+           {next_state, active, NewState#state{relay_addr = MockRelayAddr}}
     end;
 wait_for_allocate(Event, State) ->
     ?LOG_ERROR("Unexpected event in 'wait_for_allocate': ~p", [Event]),
@@ -287,28 +270,15 @@ active(#stun{class = request,
     end;
 active(#stun{class = indication,
              method = ?STUN_METHOD_SEND,
-             'XOR-PEER-ADDRESS' = [{Addr, Port}],
+             'XOR-PEER-ADDRESS' = [{Addr, _Port}],
              'DATA' = Data},
        State)
     when is_binary(Data) ->
     State2 =
         case maps:find(Addr, State#state.permissions) of
             {ok, _} ->
-                State1 =
-                    case State#state.in_use of
-                        false ->
-                            State#state.parent ! {selected_integrated_turn_pid, self()},
-                            State#state{in_use = true, peer = {Addr, Port}};
-                        true ->
-                            State
-                    end,
-                case maybe_send_to_parent(State1, Data) of
-                    false ->
-                        gen_udp:send(State1#state.relay_sock, Addr, Port, Data);
-                    true ->
-                        pass
-                end,
-                count_sent(State1, Data);
+                send_payload_to_parent(State, Data),
+                count_sent(State, Data);
             error ->
                 State
         end,
@@ -368,23 +338,10 @@ active(#stun{class = request, method = ?STUN_METHOD_CHANNEL_BIND} = Msg, State) 
     {next_state, active, send(State, R)};
 active(#turn{channel = Channel, data = Data}, State) ->
     case maps:find(Channel, State#state.channels) of
-        {ok, {{Addr, Port}, _}} ->
-            State1 =
-                case State#state.in_use of
-                    false ->
-                        State#state.parent ! {selected_integrated_turn_pid, self()},
-                        State#state{in_use = true, peer = {Addr, Port}};
-                    true ->
-                        State
-                end,
-            case maybe_send_to_parent(State1, Data) of
-                false ->
-                    gen_udp:send(State1#state.relay_sock, Addr, Port, Data);
-                true ->
-                    pass
-            end,
-            State2 = count_sent(State1, Data),
-            {next_state, active, State2};
+        {ok, _} ->
+            send_payload_to_parent(State, Data),
+            State1 = count_sent(State, Data),
+            {next_state, active, State1};
         error ->
             {next_state, active, State}
     end;
@@ -401,18 +358,6 @@ handle_event(Event, StateName, State) ->
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, {error, badarg}, StateName, State}.
 
-handle_info({udp, Sock, Addr, Port, Data}, StateName, State) ->
-    inet:setopts(Sock, [{active, once}]),
-    State1 = send_payload_to_client(Data, {Addr, Port}, State),
-    State2 =
-        case {State#state.peer, is_stun_packet(Data)} of
-            {undefined, false} ->
-                State#state.parent ! {selected_integrated_turn_pid, self()},
-                State1#state{peer = {Addr, Port}};
-            _ ->
-                State1
-        end,
-    {next_state, StateName, State2};
 handle_info({timeout, _Tref, stop}, _StateName, State) ->
     {stop, normal, State};
 handle_info({timeout, _Tref, {permission_timeout, Addr}}, StateName, State) ->
@@ -437,11 +382,38 @@ handle_info({timeout, _Tref, {channel_timeout, Channel}}, StateName, State) ->
     end;
 handle_info({'DOWN', _Ref, _, _, _}, _StateName, State) ->
     {stop, normal, State};
-handle_info({ice_payload, Payload}, StateName, #state{in_use = false} = State) ->
-    NewState = send_payload_to_client(Payload, State#state.peer, State),
+handle_info({connectivity_check, Params}, StateName, State) ->
+    {_RelayAddr, RelayPort} = State#state.relay_addr,
+    Class = proplists:get_value(class, Params),
+    XorMappedAddress =
+        case Class of
+            response ->
+                {State#state.mock_relay_ip, RelayPort};
+            _ ->
+                undefined
+        end,
+    IcePwd = proplists:get_value(ice_pwd, Params),
+    StunMsg =
+        #stun{class = Class,
+              method = ?STUN_METHOD_BINDING,
+              magic = proplists:get_value(magic, Params),
+              trid = proplists:get_value(trid, Params),
+              'USERNAME' = proplists:get_value(username, Params),
+              'PRIORITY' = proplists:get_value(priority, Params),
+              'USE-CANDIDATE' = proplists:get_value(use_candidate, Params, false),
+              'ICE-CONTROLLING' = proplists:get_value(ice_controlling, Params, false),
+              'ICE-CONTROLLED' = proplists:get_value(ice_controlled, Params, false),
+              'XOR-MAPPED-ADDRESS' = XorMappedAddress,
+              'ERROR-CODE' =
+                  stun_codec:error(
+                      proplists:get_value(error_code, Params))},
+    Payload =
+        stun_codec:add_fingerprint(
+            stun_codec:encode(StunMsg, IcePwd)),
+    NewState = send_payload_to_client(Payload, State),
     {next_state, StateName, NewState};
 handle_info({ice_payload, Payload}, StateName, State) ->
-    NewState = send_payload_to_client(Payload, State#state.peer, State),
+    NewState = send_payload_to_client(Payload, State),
     {next_state, StateName, NewState};
 handle_info(Info, StateName, State) ->
     ?LOG_ERROR("Unexpected info in '~s': ~p", [StateName, Info]),
@@ -466,6 +438,7 @@ terminate(_Reason, _StateName, State) ->
        true ->
            ok
     end,
+    State#state.parent ! {deleting_alloc, self()},
     ?LOG_NOTICE("Relayed ~B KiB (in ~B B / ~B packets, out ~B B / ~B packets), "
                 "duration: ~B seconds",
                 [round((RcvdBytes + SentBytes) / 1024),
@@ -548,9 +521,12 @@ send(State, Msg) ->
             State
     end.
 
-send_payload_to_client(Payload, Peer, State) ->
-    {PeerAddr, _PeerPort} = Peer,
-    case {maps:find(PeerAddr, State#state.permissions), maps:find(Peer, State#state.peers)} of
+send_payload_to_client(Payload, State) ->
+    CandidateAddr = State#state.fake_candidate_addr,
+    {CandidateIP, _} = CandidateAddr,
+    case {maps:find(CandidateIP, State#state.permissions),
+          maps:find(CandidateAddr, State#state.peers)}
+    of
         {{ok, _}, {ok, Channel}} ->
             TurnMsg = #turn{channel = Channel, data = Payload},
             State1 = count_rcvd(State, Payload),
@@ -560,7 +536,7 @@ send_payload_to_client(Payload, Peer, State) ->
             Ind = #stun{class = indication,
                         method = ?STUN_METHOD_DATA,
                         trid = Seq,
-                        'XOR-PEER-ADDRESS' = [Peer],
+                        'XOR-PEER-ADDRESS' = [CandidateAddr],
                         'DATA' = Payload},
             State1 = count_rcvd(State, Payload),
             send(State1#state{seq = Seq + 1}, Ind);
@@ -573,47 +549,27 @@ is_stun_packet(<<Head:8, _Tail/binary>>) when Head < 2 ->
 is_stun_packet(_Pkt) ->
     false.
 
-maybe_send_to_parent(#state{parent = Parent}, Payload) ->
-    case {erlang:is_pid(Parent), is_stun_packet(Payload)} of
-        {true, false} ->
-            Parent ! {ice_payload, 1, 1, Payload},
-            true;
-        _ ->
-            false
+send_payload_to_parent(#state{parent = Parent}, Payload) ->
+    case is_stun_packet(Payload) of
+        true ->
+            {ok, StunMsg} = stun_codec:decode(Payload, datagram),
+            Parent
+            ! {connectivity_check,
+               [{class, StunMsg#stun.class},
+                {magic, StunMsg#stun.magic},
+                {trid, StunMsg#stun.trid},
+                {username, StunMsg#stun.'USERNAME'},
+                {priority, StunMsg#stun.'PRIORITY'},
+                {use_candidate, StunMsg#stun.'USE-CANDIDATE'},
+                {ice_controlled, StunMsg#stun.'ICE-CONTROLLED'},
+                {ice_controlling, StunMsg#stun.'ICE-CONTROLLING'}],
+               self()};
+        false ->
+            Parent ! {ice_payload, Payload}
     end.
 
 time_left(TRef) ->
     erlang:read_timer(TRef) div 1000.
-
-%% Simple port randomization algorithm from
-%% draft-ietf-tsvwg-port-randomization-04
-allocate_addr(Family, Addr, {Min, Max}) ->
-    Count = Max - Min + 1,
-    Next = Min + stun:rand_uniform(Count) - 1,
-    allocate_addr(Family, Addr, Min, Max, Next, Count).
-
-allocate_addr(_Family, _Addr, _Min, _Max, _Next, 0) ->
-    {error, eaddrinuse};
-allocate_addr(Family, Addr, Min, Max, Next, Count) ->
-    case gen_udp:open(Next, [binary, Family, {ip, Addr}, {active, once}]) of
-        {ok, Sock} ->
-            case inet:sockname(Sock) of
-                {ok, {_, Port}} ->
-                    {ok, Port, Sock};
-                Err ->
-                    Err
-            end;
-        {error, eaddrinuse} ->
-            if Next == Max ->
-                   allocate_addr(Family, Addr, Min, Max, Min, Count - 1);
-               true ->
-                   allocate_addr(Family, Addr, Min, Max, Next + 1, Count - 1)
-            end;
-        {error, eaddrnotavail} when is_tuple(Addr) ->
-            allocate_addr(Family, any, Min, Max, Next, Count);
-        Err ->
-            Err
-    end.
 
 families_match(RelayAddr, Addrs) ->
     lists:all(fun(Addr) -> family_matches(RelayAddr, Addr) end, Addrs).
