@@ -304,14 +304,11 @@ dec_attr(?STUN_ATTR_DONT_FRAGMENT, _Val, Msg) ->
 dec_attr(?STUN_ATTR_CHANNEL_NUMBER, Val, Msg) ->
     <<Channel:16, _:16>> = Val,
     Msg#stun{'CHANNEL-NUMBER' = Channel};
-dec_attr(?STUN_ATTR_USE_CANDIDATE, Val, Msg) ->
-    % erlang:display({"dupa use candidate", Val}),
+dec_attr(?STUN_ATTR_USE_CANDIDATE, _Val, Msg) ->
     Msg#stun{'USE-CANDIDATE' = true};
-dec_attr(?STUN_ATTR_ICE_CONTROLLED, Val, Msg) ->
-    % erlang:display({"dupa ice controlled", Val}),
+dec_attr(?STUN_ATTR_ICE_CONTROLLED, _Val, Msg) ->
     Msg#stun{'ICE-CONTROLLED' = true};
-dec_attr(?STUN_ATTR_ICE_CONTROLLING, Val, Msg) ->
-    % erlang:display({"dupa ice controlling", Val}),
+dec_attr(?STUN_ATTR_ICE_CONTROLLING, _Val, Msg) ->
     Msg#stun{'ICE-CONTROLLING' = true};
 dec_attr(?STUN_ATTR_PRIORITY, Val, Msg) ->
     <<Priority:32>> = Val,
@@ -380,7 +377,6 @@ enc_error_code(undefined) ->
 enc_error_code({undefined, _Sth}) ->
     <<>>;
 enc_error_code({Code, Reason}) ->
-    % erlang:display({"error debug", Code, Reason}),
     Class = Code div 100,
     Number = Code rem 100,
     enc_attr(?STUN_ATTR_ERROR_CODE, <<0:21, Class:3, Number:8, Reason/binary>>).
