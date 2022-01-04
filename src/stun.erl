@@ -50,19 +50,29 @@
 
 -record(state,
         {sock :: inet:socket() | fast_tls:tls_socket() | undefined,
-         sock_mod = gen_tcp :: gen_udp | gen_tcp | fast_tls, certfile :: iodata() | undefined,
-         peer = {{0, 0, 0, 0}, 0} :: addr(), tref :: reference() | undefined,
-         use_turn = false :: boolean(), relay_ipv4_ip = {127, 0, 0, 1} :: inet:ip4_address(),
+         sock_mod = gen_tcp :: gen_udp | gen_tcp | fast_tls,
+         certfile :: iodata() | undefined,
+         peer = {{0, 0, 0, 0}, 0} :: addr(),
+         tref :: reference() | undefined,
+         use_turn = false :: boolean(),
+         relay_ipv4_ip = {127, 0, 0, 1} :: inet:ip4_address(),
          relay_ipv6_ip :: inet:ip6_address() | undefined,
          mock_relay_ip = {127, 0, 0, 1} :: inet:ip4_address(),
-         min_port = 49152 :: non_neg_integer(), max_port = 65535 :: non_neg_integer(),
-         max_allocs = 10 :: non_neg_integer() | infinity, shaper = none :: stun_shaper:shaper(),
-         max_permissions = 10 :: non_neg_integer() | infinity, blacklist = [] :: turn:blacklist(),
-         auth = user :: anonymous | user, nonces = treap:empty() :: treap:treap(),
-         realm = <<"">> :: binary(), auth_fun :: function() | undefined,
-         parent :: pid() | undefined, fake_candidate_addr :: inet:ip4_address() | undefined,
-         elixir_ice_impl :: boolean(), hook_fun :: function() | undefined,
-         server_name = ?SERVER_NAME :: binary(), buf = <<>> :: binary(),
+         min_port = 49152 :: non_neg_integer(),
+         max_port = 65535 :: non_neg_integer(),
+         max_allocs = 10 :: non_neg_integer() | infinity,
+         shaper = none :: stun_shaper:shaper(),
+         max_permissions = 10 :: non_neg_integer() | infinity,
+         blacklist = [] :: turn:blacklist(),
+         auth = user :: anonymous | user,
+         nonces = treap:empty() :: treap:treap(),
+         realm = <<"">> :: binary(),
+         auth_fun :: function() | undefined,
+         parent :: pid() | undefined,
+         fake_candidate_addr :: inet:ip4_address() | undefined,
+         hook_fun :: function() | undefined,
+         server_name = ?SERVER_NAME :: binary(),
+         buf = <<>> :: binary(),
          session_id :: binary() | undefined}).
 
 %%====================================================================
@@ -320,7 +330,6 @@ process(State, #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, Sec
                  {hook_fun, State#state.hook_fun},
                  {parent, State#state.parent},
                  {fake_candidate_addr, State#state.fake_candidate_addr},
-                 {elixir_ice_impl, State#state.elixir_ice_impl},
                  {session_id, State#state.session_id},
                  {lifetime, Msg#stun.'LIFETIME'},
                  {server_pid, self()}
@@ -555,8 +564,6 @@ prepare_state(Opts, Sock, Peer, SockMod) when is_list(Opts) ->
                                 State#state{parent = Parent};
                             ({fake_candidate_addr, Addr}, State) ->
                                 State#state{fake_candidate_addr = Addr};
-                            ({elixir_ice_impl, ElixirICEImpl}, State) ->
-                                State#state{elixir_ice_impl = ElixirICEImpl};
                             ({use_turn, _}, State) ->
                                 State;
                             (use_turn, State) ->

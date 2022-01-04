@@ -106,7 +106,6 @@ encode(#stun{class = Class,
                end,
            Data = <<0:2, Type:14, (Len + 24):16, Magic:32, TrID:96, Attrs/binary>>,
            MessageIntegrity = crypto:mac(hmac, sha, NewKey, Data),
-           %    MessageIntegrity = <<0:160>>,
            <<Data/binary, ?STUN_ATTR_MESSAGE_INTEGRITY:16, 20:16, MessageIntegrity/binary>>;
        true ->
            <<0:2, Type:14, Len:16, Magic:32, TrID:96, Attrs/binary>>

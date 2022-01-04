@@ -42,7 +42,6 @@ start(Secret, Opts) ->
            base64:encode(Hash)
         end,
     Parent = proplists:get_value(parent, Opts),
-    ElixirICEImpl = proplists:get_value(elixir_ice_impl, Opts),
     TurnOpts =
         [{use_turn, true},
          {auth_fun, Auth_fun},
@@ -52,8 +51,7 @@ start(Secret, Opts) ->
          {turn_min_port, AllocMinPort},
          {turn_max_port, AllocMaxPort},
          {parent, Parent},
-         {fake_candidate_addr, FakeCandAddr},
-         {elixir_ice_impl, ElixirICEImpl}],
+         {fake_candidate_addr, FakeCandAddr}],
     stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
 
 stop(IP, Port, Transport) ->

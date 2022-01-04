@@ -74,8 +74,7 @@
          rcvd_bytes = 0 :: non_neg_integer(), rcvd_pkts = 0 :: non_neg_integer(),
          sent_bytes = 0 :: non_neg_integer(), sent_pkts = 0 :: non_neg_integer(), parent :: pid(),
          start_timestamp = get_timestamp() :: integer(),
-         fake_candidate_addr :: {inet:ip4_address(), inet:port_number()},
-         elixir_ice_impl :: boolean(), server_pid :: pid()}).
+         fake_candidate_addr :: {inet:ip4_address(), inet:port_number()}, server_pid :: pid()}).
 
 %%====================================================================
 %% API
@@ -118,7 +117,6 @@ init([Opts]) ->
                server_name = proplists:get_value(server_name, Opts),
                parent = proplists:get_value(parent, Opts),
                fake_candidate_addr = proplists:get_value(fake_candidate_addr, Opts),
-               elixir_ice_impl = proplists:get_value(elixir_ice_impl, Opts),
                server_pid = proplists:get_value(server_pid, Opts),
                username = Username,
                realm = Realm,
