@@ -36,11 +36,7 @@ start(Secret, Opts) ->
         proplists:get_value(client_port_range, Opts, {50_000, 50_499}),
     {AllocMinPort, AllocMaxPort} =
         proplists:get_value(alloc_port_range, Opts, {50_500, 50_999}),
-    Auth_fun =
-        fun(User, _Realm) ->
-           Hash = crypto:mac(hmac, sha, Secret, User),
-           base64:encode(Hash)
-        end,
+    Auth_fun = fun(User, _Realm) -> stun_codec:generate_user_password(Secret, User) end,
     Parent = proplists:get_value(parent, Opts),
     TurnOpts =
         [{use_turn, true},

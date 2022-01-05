@@ -196,7 +196,7 @@ wait_for_allocate(#stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, 
                          'LIFETIME' = Lifetime,
                          'XOR-MAPPED-ADDRESS' = AddrPort},
            NewState = send(State, R),
-           State#state.parent ! {creating_alloc, self()},
+           State#state.parent ! {alloc_created, self()},
            {next_state, active, NewState#state{relay_addr = MockRelayAddr}}
     end;
 wait_for_allocate(Event, State) ->
@@ -380,7 +380,7 @@ handle_info({timeout, _Tref, {channel_timeout, Channel}}, StateName, State) ->
     end;
 handle_info({'DOWN', _Ref, _, _, _}, _StateName, State) ->
     {stop, normal, State};
-handle_info({connectivity_check, Params}, StateName, State) ->
+handle_info({send_connectivity_check, Params}, StateName, State) ->
     {_RelayAddr, RelayPort} = State#state.relay_addr,
     Class = proplists:get_value(class, Params),
     XorMappedAddress =
@@ -410,7 +410,7 @@ handle_info({connectivity_check, Params}, StateName, State) ->
             stun_codec:encode(StunMsg, IcePwd)),
     NewState = send_payload_to_client(Payload, State),
     {next_state, StateName, NewState};
-handle_info({ice_payload, Payload}, StateName, State) ->
+handle_info({send_ice_payload, Payload}, StateName, State) ->
     NewState = send_payload_to_client(Payload, State),
     {next_state, StateName, NewState};
 handle_info(Info, StateName, State) ->
@@ -436,7 +436,7 @@ terminate(_Reason, _StateName, State) ->
        true ->
            ok
     end,
-    State#state.parent ! {deleting_alloc, self()},
+    State#state.parent ! {alloc_deleted, self()},
     ?LOG_NOTICE("Relayed ~B KiB (in ~B B / ~B packets, out ~B B / ~B packets), "
                 "duration: ~B seconds",
                 [round((RcvdBytes + SentBytes) / 1024),

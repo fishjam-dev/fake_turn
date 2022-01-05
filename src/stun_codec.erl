@@ -25,7 +25,7 @@
 
 %% API
 -export([decode/2, encode/1, encode/2, version/1, error/1, check_integrity/2,
-         add_fingerprint/1, pp/1]).
+         add_fingerprint/1, generate_user_password/2, pp/1]).
 
 -include("stun.hrl").
 
@@ -115,6 +115,10 @@ add_fingerprint(<<T:16, L:16, Tail/binary>>) ->
     Data = <<T:16, (L + 8):16, Tail/binary>>,
     Fingerprint = erlang:crc32(Data) bxor 16#5354554e,
     <<Data/binary, ?STUN_ATTR_FINGERPRINT:16, 4:16, Fingerprint:32>>.
+
+generate_user_password(Secret, Username) ->
+    Hash = crypto:mac(hmac, sha, Secret, Username),
+    base64:encode(Hash).
 
 check_integrity(#stun{raw = Raw, 'MESSAGE-INTEGRITY' = MI}, Key)
     when is_binary(Raw), is_binary(MI), Key /= undefined ->
