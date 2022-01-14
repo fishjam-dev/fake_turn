@@ -38,6 +38,7 @@ start(Secret, Opts) ->
         proplists:get_value(alloc_port_range, Opts, {50_500, 50_999}),
     Auth_fun = fun(User, _Realm) -> stun_codec:generate_user_password(Secret, User) end,
     Parent = proplists:get_value(parent, Opts),
+    CertFile = proplists:get_value(certfile, Opts),
     TurnOpts =
         [{use_turn, true},
          {auth_fun, Auth_fun},
@@ -47,7 +48,8 @@ start(Secret, Opts) ->
          {turn_min_port, AllocMinPort},
          {turn_max_port, AllocMaxPort},
          {parent, Parent},
-         {fake_candidate_addr, FakeCandAddr}],
+         {fake_candidate_addr, FakeCandAddr},
+         {certfile, CertFile}],
     stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
 
 stop(IP, Port, Transport) ->
