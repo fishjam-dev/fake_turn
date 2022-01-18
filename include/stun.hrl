@@ -64,35 +64,41 @@
 -define(STUN_ATTR_PRIORITY, 16#0024).
 -define(STUN_ATTR_USE_CANDIDATE, 16#0025).
 -define(STUN_ATTR_FINGERPRINT, 16#8028).
--define(STUN_ATTR_ICE_CONTROLLED, 16#0029).
--define(STUN_ATTR_ICE_CONTROLLING, 16#002a).
+-define(STUN_ATTR_ICE_CONTROLLED, 16#8029).
+-define(STUN_ATTR_ICE_CONTROLLING, 16#802a).
 
 -record(stun,
         {class = request :: request | response | error | indication,
          method = ?STUN_METHOD_BINDING :: non_neg_integer(),
-         magic = ?STUN_MAGIC :: non_neg_integer(),
+         magic = ?STUN_MAGIC :: non_neg_integer(), 
          trid = 0 :: non_neg_integer(),
-         raw = <<>> :: binary(),
-         unsupported = [],
-         'ALTERNATE-SERVER',
-         'CHANNEL-NUMBER',
+         raw = <<>> :: binary(), 
+         unsupported = [], 
+         'ALTERNATE-SERVER', 
+         'CHANNEL-NUMBER', 
          'DATA',
-         'DONT-FRAGMENT' = false,
-         'ERROR-CODE',
-         'LIFETIME',
-         'MAPPED-ADDRESS',
+         'DONT-FRAGMENT' = false, 
+         'ERROR-CODE', 
+         'LIFETIME', 
+         'MAPPED-ADDRESS', 
          'MESSAGE-INTEGRITY',
-         'NONCE',
-         'REALM',
-         'REQUESTED-ADDRESS-FAMILY',
-         'REQUESTED-TRANSPORT',
+         'NONCE', 
+         'REALM', 
+         'REQUESTED-ADDRESS-FAMILY', 
+         'REQUESTED-TRANSPORT', 
          'SOFTWARE',
-         'UNKNOWN-ATTRIBUTES' = [],
-         'USERNAME',
-         'XOR-MAPPED-ADDRESS',
+         'UNKNOWN-ATTRIBUTES' = [], 
+         'USERNAME', 
+         'XOR-MAPPED-ADDRESS', 
          'XOR-PEER-ADDRESS' = [],
-         'XOR-RELAYED-ADDRESS'}).
--record(turn, {channel = 0 :: non_neg_integer(), data = <<>> :: binary()}).
+         'XOR-RELAYED-ADDRESS', 
+         'PRIORITY', 
+         'USE-CANDIDATE' = false, 
+         'ICE-CONTROLLED' = false,
+         'ICE-CONTROLLING' = false}).
+-record(turn, 
+        {channel = 0 :: non_neg_integer(), 
+         data = <<>> :: binary()}).
 
 %% Workarounds.
 %%-define(NO_PADDING, true).

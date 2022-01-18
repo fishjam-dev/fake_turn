@@ -68,7 +68,8 @@
          nonces = treap:empty() :: treap:treap(),
          realm = <<"">> :: binary(),
          auth_fun :: function() | undefined,
-         peer_pid :: pid() | undefined,
+         parent :: pid() | undefined,
+         fake_candidate_addr :: inet:ip4_address() | undefined,
          hook_fun :: function() | undefined,
          server_name = ?SERVER_NAME :: binary(),
          buf = <<>> :: binary(),
@@ -327,9 +328,11 @@ process(State, #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, Sec
                  {min_port, State#state.min_port},
                  {max_port, State#state.max_port},
                  {hook_fun, State#state.hook_fun},
-                 {peer_pid, State#state.peer_pid},
+                 {parent, State#state.parent},
+                 {fake_candidate_addr, State#state.fake_candidate_addr},
                  {session_id, State#state.session_id},
-                 {lifetime, Msg#stun.'LIFETIME'}
+                 {lifetime, Msg#stun.'LIFETIME'},
+                 {server_pid, self()}
                  | if SockMod /= gen_udp ->
                           [{owner, self()}];
                       true ->
@@ -557,8 +560,10 @@ prepare_state(Opts, Sock, Peer, SockMod) when is_list(Opts) ->
                             ({auth_type, Wrong}, State) ->
                                 ?LOG_ERROR("Wrong 'auth_type' value: ~p", [Wrong]),
                                 State;
-                            ({peer_pid, PeerPid}, State) ->
-                                State#state{peer_pid = PeerPid};
+                            ({parent, Parent}, State) ->
+                                State#state{parent = Parent};
+                            ({fake_candidate_addr, Addr}, State) ->
+                                State#state{fake_candidate_addr = Addr};
                             ({use_turn, _}, State) ->
                                 State;
                             (use_turn, State) ->

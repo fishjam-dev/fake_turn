@@ -31,16 +31,14 @@ start(Secret, Opts) ->
     IP = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
     MockIP = proplists:get_value(mock_ip, Opts, {127, 0, 0, 0}),
     Transport = proplists:get_value(transport, Opts, udp),
+    FakeCandAddr = proplists:get_value(fake_candidate_addr, Opts),
     {ClientMinPort, ClientMaxPort} =
         proplists:get_value(client_port_range, Opts, {50_000, 50_499}),
     {AllocMinPort, AllocMaxPort} =
         proplists:get_value(alloc_port_range, Opts, {50_500, 50_999}),
-    Auth_fun =
-        fun(User, _Realm) ->
-           Hash = crypto:mac(hmac, sha, Secret, User),
-           base64:encode(Hash)
-        end,
-    PeerPid = proplists:get_value(peer_pid, Opts),
+    Auth_fun = fun(User, _Realm) -> stun_codec:generate_user_password(Secret, User) end,
+    Parent = proplists:get_value(parent, Opts),
+    CertFile = proplists:get_value(certfile, Opts),
     TurnOpts =
         [{use_turn, true},
          {auth_fun, Auth_fun},
@@ -49,7 +47,9 @@ start(Secret, Opts) ->
          {mock_turn_ipv4_address, MockIP},
          {turn_min_port, AllocMinPort},
          {turn_max_port, AllocMaxPort},
-         {peer_pid, PeerPid}],
+         {parent, Parent},
+         {fake_candidate_addr, FakeCandAddr},
+         {certfile, CertFile}],
     stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
 
 stop(IP, Port, Transport) ->
