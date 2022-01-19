@@ -74,7 +74,8 @@
          rcvd_bytes = 0 :: non_neg_integer(), rcvd_pkts = 0 :: non_neg_integer(),
          sent_bytes = 0 :: non_neg_integer(), sent_pkts = 0 :: non_neg_integer(), parent :: pid(),
          start_timestamp = get_timestamp() :: integer(),
-         fake_candidate_addr :: {inet:ip4_address(), inet:port_number()}, server_pid :: pid()}).
+         candidate_addr :: {inet:ip4_address(), inet:port_number()} | undefined,
+         server_pid :: pid()}).
 
 %%====================================================================
 %% API
@@ -116,7 +117,6 @@ init([Opts]) ->
                max_permissions = proplists:get_value(max_permissions, Opts),
                server_name = proplists:get_value(server_name, Opts),
                parent = proplists:get_value(parent, Opts),
-               fake_candidate_addr = proplists:get_value(fake_candidate_addr, Opts),
                server_pid = proplists:get_value(server_pid, Opts),
                username = Username,
                realm = Realm,
@@ -268,17 +268,24 @@ active(#stun{class = request,
     end;
 active(#stun{class = indication,
              method = ?STUN_METHOD_SEND,
-             'XOR-PEER-ADDRESS' = [{Addr, _Port}],
+             'XOR-PEER-ADDRESS' = [{Addr, Port}],
              'DATA' = Data},
        State)
     when is_binary(Data) ->
+    State1 =
+        case State#state.candidate_addr of
+            undefined ->
+                State#state{candidate_addr = {Addr, Port}};
+            {_Addr, _Port} ->
+                State
+        end,
     State2 =
         case maps:find(Addr, State#state.permissions) of
             {ok, _} ->
-                send_payload_to_parent(State, Data),
-                count_sent(State, Data);
+                send_payload_to_parent(State1, Data),
+                count_sent(State1, Data);
             error ->
-                State
+                State1
         end,
     {next_state, active, State2};
 active(#stun{class = request,
@@ -305,6 +312,13 @@ active(#stun{class = request,
         {FindResult, _} ->
             case update_permissions(State, [Addr]) of
                 {ok, NewState0} ->
+                    NewState1 =
+                        case NewState0#state.candidate_addr of
+                            undefined ->
+                                NewState0#state{candidate_addr = Peer};
+                            {_Addr, _Port1} ->
+                                NewState0
+                        end,
                     _Op = case FindResult of
                               {ok, {_, OldTRef}} ->
                                   cancel_timer(OldTRef),
@@ -316,7 +330,7 @@ active(#stun{class = request,
                         erlang:start_timer(?CHANNEL_LIFETIME, self(), {channel_timeout, Channel}),
                     Peers = maps:put(Peer, Channel, State#state.peers),
                     Chans = maps:put(Channel, {Peer, TRef}, State#state.channels),
-                    NewState = NewState0#state{peers = Peers, channels = Chans},
+                    NewState = NewState1#state{peers = Peers, channels = Chans},
                     ?LOG_INFO("~s TURN channel ~.16B for peer ~s",
                               [_Op, Channel, stun_logger:encode_addr(Peer)]),
                     R = Resp#stun{class = response},
@@ -520,7 +534,7 @@ send(State, Msg) ->
     end.
 
 send_payload_to_client(Payload, State) ->
-    CandidateAddr = State#state.fake_candidate_addr,
+    CandidateAddr = State#state.candidate_addr,
     {CandidateIP, _} = CandidateAddr,
     case {maps:find(CandidateIP, State#state.permissions),
           maps:find(CandidateAddr, State#state.peers)}

@@ -31,7 +31,6 @@ start(Secret, Opts) ->
     IP = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
     MockIP = proplists:get_value(mock_ip, Opts, {127, 0, 0, 0}),
     Transport = proplists:get_value(transport, Opts, udp),
-    FakeCandAddr = proplists:get_value(fake_candidate_addr, Opts),
     {ClientMinPort, ClientMaxPort} =
         proplists:get_value(client_port_range, Opts, {50_000, 50_499}),
     {AllocMinPort, AllocMaxPort} =
@@ -48,7 +47,6 @@ start(Secret, Opts) ->
          {turn_min_port, AllocMinPort},
          {turn_max_port, AllocMaxPort},
          {parent, Parent},
-         {fake_candidate_addr, FakeCandAddr},
          {certfile, CertFile}],
     stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
 
