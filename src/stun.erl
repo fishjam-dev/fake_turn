@@ -69,6 +69,7 @@
          realm = <<"">> :: binary(),
          auth_fun :: function() | undefined,
          parent :: pid() | undefined,
+         parent_resolver :: function() | undefined,
          hook_fun :: function() | undefined,
          server_name = ?SERVER_NAME :: binary(),
          buf = <<>> :: binary(),
@@ -328,6 +329,7 @@ process(State, #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, Sec
                  {max_port, State#state.max_port},
                  {hook_fun, State#state.hook_fun},
                  {parent, State#state.parent},
+                 {parent_resolver, State#state.parent_resolver},
                  {session_id, State#state.session_id},
                  {lifetime, Msg#stun.'LIFETIME'},
                  {server_pid, self()}
@@ -560,6 +562,8 @@ prepare_state(Opts, Sock, Peer, SockMod) when is_list(Opts) ->
                                 State;
                             ({parent, Parent}, State) ->
                                 State#state{parent = Parent};
+                            ({parent_resolver, ParentResolver}, State) ->
+                                State#state{parent_resolver = ParentResolver};
                             ({use_turn, _}, State) ->
                                 State;
                             (use_turn, State) ->

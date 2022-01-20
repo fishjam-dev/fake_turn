@@ -37,6 +37,7 @@ start(Secret, Opts) ->
         proplists:get_value(alloc_port_range, Opts, {50_500, 50_999}),
     Auth_fun = fun(User, _Realm) -> stun_codec:generate_user_password(Secret, User) end,
     Parent = proplists:get_value(parent, Opts),
+    ParentResolver = proplists:get_value(parent_resolver, Opts),
     CertFile = proplists:get_value(certfile, Opts),
     TurnOpts =
         [{use_turn, true},
@@ -47,6 +48,7 @@ start(Secret, Opts) ->
          {turn_min_port, AllocMinPort},
          {turn_max_port, AllocMaxPort},
          {parent, Parent},
+         {parent_resolver, ParentResolver},
          {certfile, CertFile}],
     stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
 
