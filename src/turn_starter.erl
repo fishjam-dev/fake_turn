@@ -31,6 +31,7 @@ start(Secret, Opts) ->
     IP = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
     MockIP = proplists:get_value(mock_ip, Opts, {127, 0, 0, 0}),
     Transport = proplists:get_value(transport, Opts, udp),
+    ClientPort = proplists:get_value(client_port, Opts),
     {ClientMinPort, ClientMaxPort} =
         proplists:get_value(client_port_range, Opts, {50_000, 50_499}),
     {AllocMinPort, AllocMaxPort} =
@@ -50,7 +51,11 @@ start(Secret, Opts) ->
          {parent, Parent},
          {parent_resolver, ParentResolver},
          {certfile, CertFile}],
-    stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
+    stun_listener:add_listener(IP,
+                               ClientPort,
+                               {ClientMinPort, ClientMaxPort},
+                               Transport,
+                               TurnOpts).
 
 stop(IP, Port, Transport) ->
     stun_listener:del_listener(IP, Port, Transport).
