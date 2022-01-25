@@ -198,7 +198,6 @@ wait_for_allocate(#stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, 
                          'LIFETIME' = Lifetime,
                          'XOR-MAPPED-ADDRESS' = AddrPort},
            NewState = send(State, R),
-           %    State#state.parent ! {alloc_created, self()},
            {next_state, active, NewState#state{relay_addr = MockRelayAddr}}
     end;
 wait_for_allocate(Event, State) ->
