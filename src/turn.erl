@@ -74,7 +74,7 @@
          rcvd_bytes = 0 :: non_neg_integer(), rcvd_pkts = 0 :: non_neg_integer(),
          sent_bytes = 0 :: non_neg_integer(), sent_pkts = 0 :: non_neg_integer(),
          parent :: pid() | undefined, parent_resolver :: function() | undefined,
-         port_black_list = [] :: list(), start_timestamp = get_timestamp() :: integer(),
+         start_timestamp = get_timestamp() :: integer(), unknonw_ports :: sets:set(),
          candidate_addr :: {inet:ip4_address(), inet:port_number()} | undefined,
          server_pid :: pid()}).
 
@@ -119,8 +119,8 @@ init([Opts]) ->
                server_name = proplists:get_value(server_name, Opts),
                parent = proplists:get_value(parent, Opts),
                parent_resolver = proplists:get_value(parent_resolver, Opts),
-               port_black_list = [],
                server_pid = proplists:get_value(server_pid, Opts),
+               unknonw_ports = sets:new([{version, 2}]),
                username = Username,
                realm = Realm,
                addr = AddrPort,
@@ -593,8 +593,7 @@ send_payload_to_parent(State, Payload) ->
 
 try_resolve_parent(#state{parent = undefined} = State) ->
     {_Addr, Port} = State#state.candidate_addr,
-
-    case lists:member(Port, State#state.port_black_list) of
+    case sets:is_element(Port, State#state.unknonw_ports) of
         true ->
             State;
         false ->
@@ -602,8 +601,9 @@ try_resolve_parent(#state{parent = undefined} = State) ->
                 {ok, Parent} ->
                     State#state{parent = Parent};
                 {error, _Reason} ->
-                    NewPortBlackList = [Port] ++ State#state.port_black_list,
-                    State#state{port_black_list = NewPortBlackList}
+                    ?LOG_DEBUG("Parent assigned to port ~B could not be resolved", [Port]),
+                    NewUnknownPorts = sets:add_element(Port, State#state.unknonw_ports),
+                    State#state{unknonw_ports = NewUnknownPorts}
             end
     end;
 try_resolve_parent(State) ->
