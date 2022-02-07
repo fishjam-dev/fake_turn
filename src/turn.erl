@@ -568,20 +568,14 @@ is_stun_packet(_Pkt) ->
     false.
 
 send_payload_to_parent(State, Payload) ->
-    NewState =
-        case State#state.parent of
-            undefined ->
-                {_Addr, Port} = State#state.candidate_addr,
-                {ok, Parent} = (State#state.parent_resolver)(Port),
-                State#state{parent = Parent};
-            _Parent ->
-                State
-        end,
+    NewState = try_resolve_parent(State),
 
-    case is_stun_packet(Payload) of
-        true ->
+    case {NewState#state.parent, is_stun_packet(Payload)} of
+        {undefined, _IsStunPacket} ->
+            pass;
+        {Parent, true} ->
             {ok, StunMsg} = stun_codec:decode(Payload, datagram),
-            NewState#state.parent
+            Parent
             ! {connectivity_check,
                [{class, StunMsg#stun.class},
                 {magic, StunMsg#stun.magic},
@@ -592,8 +586,8 @@ send_payload_to_parent(State, Payload) ->
                 {ice_controlled, StunMsg#stun.'ICE-CONTROLLED'},
                 {ice_controlling, StunMsg#stun.'ICE-CONTROLLING'}],
                self()};
-        false ->
-            NewState#state.parent ! {ice_payload, Payload}
+        {Parent, false} ->
+            Parent ! {ice_payload, Payload}
     end,
     NewState.
 
