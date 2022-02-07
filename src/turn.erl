@@ -453,7 +453,7 @@ terminate(_Reason, _StateName, State) ->
            ok
     end,
     if State#state.parent /= undefined ->
-           State#state.parent ! {alloc_deleting, self()};
+           State#state.parent ! {alloc_deleted, self()};
        true ->
            ok
     end,
