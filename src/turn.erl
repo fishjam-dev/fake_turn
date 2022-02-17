@@ -72,9 +72,11 @@
          seq = 1 :: non_neg_integer(), life_timer :: reference() | undefined,
          blacklist = [] :: blacklist(), hook_fun :: function() | undefined, session_id :: binary(),
          rcvd_bytes = 0 :: non_neg_integer(), rcvd_pkts = 0 :: non_neg_integer(),
-         sent_bytes = 0 :: non_neg_integer(), sent_pkts = 0 :: non_neg_integer(), parent :: pid(),
-         start_timestamp = get_timestamp() :: integer(),
-         fake_candidate_addr :: {inet:ip4_address(), inet:port_number()}, server_pid :: pid()}).
+         sent_bytes = 0 :: non_neg_integer(), sent_pkts = 0 :: non_neg_integer(),
+         parent :: pid() | undefined, parent_resolver :: function() | undefined,
+         start_timestamp = get_timestamp() :: integer(), unknonw_ports :: sets:set(),
+         candidate_addr :: {inet:ip4_address(), inet:port_number()} | undefined,
+         server_pid :: pid()}).
 
 %%====================================================================
 %% API
@@ -116,8 +118,9 @@ init([Opts]) ->
                max_permissions = proplists:get_value(max_permissions, Opts),
                server_name = proplists:get_value(server_name, Opts),
                parent = proplists:get_value(parent, Opts),
-               fake_candidate_addr = proplists:get_value(fake_candidate_addr, Opts),
+               parent_resolver = proplists:get_value(parent_resolver, Opts),
                server_pid = proplists:get_value(server_pid, Opts),
+               unknonw_ports = sets:new([{version, 2}]),
                username = Username,
                realm = Realm,
                addr = AddrPort,
@@ -196,7 +199,6 @@ wait_for_allocate(#stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, 
                          'LIFETIME' = Lifetime,
                          'XOR-MAPPED-ADDRESS' = AddrPort},
            NewState = send(State, R),
-           State#state.parent ! {alloc_created, self()},
            {next_state, active, NewState#state{relay_addr = MockRelayAddr}}
     end;
 wait_for_allocate(Event, State) ->
@@ -268,19 +270,26 @@ active(#stun{class = request,
     end;
 active(#stun{class = indication,
              method = ?STUN_METHOD_SEND,
-             'XOR-PEER-ADDRESS' = [{Addr, _Port}],
+             'XOR-PEER-ADDRESS' = [{Addr, Port}],
              'DATA' = Data},
        State)
     when is_binary(Data) ->
-    State2 =
-        case maps:find(Addr, State#state.permissions) of
-            {ok, _} ->
-                send_payload_to_parent(State, Data),
-                count_sent(State, Data);
-            error ->
+    State1 =
+        case State#state.candidate_addr of
+            undefined ->
+                State#state{candidate_addr = {Addr, Port}};
+            {_Addr, _Port} ->
                 State
         end,
-    {next_state, active, State2};
+    State3 =
+        case maps:find(Addr, State#state.permissions) of
+            {ok, _} ->
+                State2 = send_payload_to_parent(State1, Data),
+                count_sent(State2, Data);
+            error ->
+                State1
+        end,
+    {next_state, active, State3};
 active(#stun{class = request,
              'CHANNEL-NUMBER' = Channel,
              'XOR-PEER-ADDRESS' = [{Addr, _Port} = Peer],
@@ -305,6 +314,13 @@ active(#stun{class = request,
         {FindResult, _} ->
             case update_permissions(State, [Addr]) of
                 {ok, NewState0} ->
+                    NewState1 =
+                        case NewState0#state.candidate_addr of
+                            undefined ->
+                                NewState0#state{candidate_addr = Peer};
+                            {_Addr, _Port1} ->
+                                NewState0
+                        end,
                     _Op = case FindResult of
                               {ok, {_, OldTRef}} ->
                                   cancel_timer(OldTRef),
@@ -316,7 +332,7 @@ active(#stun{class = request,
                         erlang:start_timer(?CHANNEL_LIFETIME, self(), {channel_timeout, Channel}),
                     Peers = maps:put(Peer, Channel, State#state.peers),
                     Chans = maps:put(Channel, {Peer, TRef}, State#state.channels),
-                    NewState = NewState0#state{peers = Peers, channels = Chans},
+                    NewState = NewState1#state{peers = Peers, channels = Chans},
                     ?LOG_INFO("~s TURN channel ~.16B for peer ~s",
                               [_Op, Channel, stun_logger:encode_addr(Peer)]),
                     R = Resp#stun{class = response},
@@ -337,9 +353,9 @@ active(#stun{class = request, method = ?STUN_METHOD_CHANNEL_BIND} = Msg, State) 
 active(#turn{channel = Channel, data = Data}, State) ->
     case maps:find(Channel, State#state.channels) of
         {ok, _} ->
-            send_payload_to_parent(State, Data),
-            State1 = count_sent(State, Data),
-            {next_state, active, State1};
+            State1 = send_payload_to_parent(State, Data),
+            State2 = count_sent(State1, Data),
+            {next_state, active, State2};
         error ->
             {next_state, active, State}
     end;
@@ -436,7 +452,11 @@ terminate(_Reason, _StateName, State) ->
        true ->
            ok
     end,
-    State#state.parent ! {alloc_deleted, self()},
+    if State#state.parent /= undefined ->
+           State#state.parent ! {alloc_deleting, self()};
+       true ->
+           ok
+    end,
     ?LOG_NOTICE("Relayed ~B KiB (in ~B B / ~B packets, out ~B B / ~B packets), "
                 "duration: ~B seconds",
                 [round((RcvdBytes + SentBytes) / 1024),
@@ -520,7 +540,7 @@ send(State, Msg) ->
     end.
 
 send_payload_to_client(Payload, State) ->
-    CandidateAddr = State#state.fake_candidate_addr,
+    CandidateAddr = State#state.candidate_addr,
     {CandidateIP, _} = CandidateAddr,
     case {maps:find(CandidateIP, State#state.permissions),
           maps:find(CandidateAddr, State#state.peers)}
@@ -547,9 +567,13 @@ is_stun_packet(<<Head:8, _Tail/binary>>) when Head < 2 ->
 is_stun_packet(_Pkt) ->
     false.
 
-send_payload_to_parent(#state{parent = Parent}, Payload) ->
-    case is_stun_packet(Payload) of
-        true ->
+send_payload_to_parent(State, Payload) ->
+    NewState = try_resolve_parent(State),
+
+    case {NewState#state.parent, is_stun_packet(Payload)} of
+        {undefined, _IsStunPacket} ->
+            pass;
+        {Parent, true} ->
             {ok, StunMsg} = stun_codec:decode(Payload, datagram),
             Parent
             ! {connectivity_check,
@@ -562,9 +586,28 @@ send_payload_to_parent(#state{parent = Parent}, Payload) ->
                 {ice_controlled, StunMsg#stun.'ICE-CONTROLLED'},
                 {ice_controlling, StunMsg#stun.'ICE-CONTROLLING'}],
                self()};
-        false ->
+        {Parent, false} ->
             Parent ! {ice_payload, Payload}
-    end.
+    end,
+    NewState.
+
+try_resolve_parent(#state{parent = undefined} = State) ->
+    {_Addr, Port} = State#state.candidate_addr,
+    case sets:is_element(Port, State#state.unknonw_ports) of
+        true ->
+            State;
+        false ->
+            case (State#state.parent_resolver)(Port) of
+                {ok, Parent} ->
+                    State#state{parent = Parent};
+                {error, _Reason} ->
+                    ?LOG_DEBUG("Parent assigned to port ~B could not be resolved", [Port]),
+                    NewUnknownPorts = sets:add_element(Port, State#state.unknonw_ports),
+                    State#state{unknonw_ports = NewUnknownPorts}
+            end
+    end;
+try_resolve_parent(State) ->
+    State.
 
 time_left(TRef) ->
     erlang:read_timer(TRef) div 1000.

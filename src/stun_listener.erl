@@ -55,9 +55,13 @@ del_listener(IP, Port, Transport) ->
 init([]) ->
     {ok, #state{}}.
 
-handle_call({add_listener, IP, MinPort, MaxPort, Transport, Opts}, _From, State) ->
+handle_call({add_listener, IP, Port, {MinPort, MaxPort}, Transport, Opts},
+            _From,
+            State) ->
     {Pid, MRef} =
-        spawn_monitor(?MODULE, start_listener, [IP, MinPort, MaxPort, Transport, Opts, self()]),
+        spawn_monitor(?MODULE,
+                      start_listener,
+                      [IP, Port, {MinPort, MaxPort}, Transport, Opts, self()]),
     receive
         {'DOWN', MRef, _Type, _Object, Info} ->
             Res = {error, Info},
@@ -116,7 +120,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-start_listener(IP, MinPort, MaxPort, Transport, Opts, Owner)
+start_listener(IP, ClientPort, {MinPort, MaxPort}, Transport, Opts, Owner)
     when Transport == tcp; Transport == tls ->
     OpenFun =
         fun(Port) ->
@@ -138,7 +142,13 @@ start_listener(IP, MinPort, MaxPort, Transport, Opts, Owner)
             tcp ->
                 Opts
         end,
-    case open_socket(MinPort, MaxPort, OpenFun) of
+    PortInfo =
+        if ClientPort == undefined ->
+               {MinPort, MaxPort};
+           true ->
+               ClientPort
+        end,
+    case open_socket(PortInfo, OpenFun) of
         {ok, ListenSocket} ->
             {ok, PortNumber} = inet:port(ListenSocket),
             Owner ! {self(), {ok, PortNumber}},
@@ -147,11 +157,17 @@ start_listener(IP, MinPort, MaxPort, Transport, Opts, Owner)
         Err ->
             Owner ! {self(), Err}
     end;
-start_listener(IP, MinPort, MaxPort, udp, Opts, Owner) ->
+start_listener(IP, ClientPort, {MinPort, MaxPort}, udp, Opts, Owner) ->
     OpenFun =
         fun(Port) -> gen_udp:open(Port, [binary, {ip, IP}, {active, false}, {reuseaddr, true}])
         end,
-    case open_socket(MinPort, MaxPort, OpenFun) of
+    PortInfo =
+        if ClientPort == undefined ->
+               {MinPort, MaxPort};
+           true ->
+               ClientPort
+        end,
+    case open_socket(PortInfo, OpenFun) of
         {ok, Socket} ->
             {ok, PortNumber} = inet:port(Socket),
             Owner ! {self(), {ok, PortNumber}},
@@ -221,10 +237,12 @@ format_listener_error(IP, MinPort, MaxPort, Transport, Opts, Err) ->
                "** Reason: ~p",
                [stun_logger:encode_addr(IP), MinPort, MaxPort, Transport, Opts, Err]).
 
-open_socket(MinPort, MaxPort, OpenSockFunc) ->
+open_socket({MinPort, MaxPort}, OpenSockFunc) ->
     Count = MaxPort - MinPort,
     Next = MinPort + stun:rand_uniform(Count + 1) - 1,
-    open_socket(MinPort, MaxPort, OpenSockFunc, Next, Count).
+    open_socket(MinPort, MaxPort, OpenSockFunc, Next, Count);
+open_socket(Port, OpenSockFunc) ->
+    OpenSockFunc(Port).
 
 open_socket(_MinPort, _MaxPort, _OpenSockFunc, _Next, -1) ->
     {error, eaddrinuse};

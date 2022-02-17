@@ -31,13 +31,14 @@ start(Secret, Opts) ->
     IP = proplists:get_value(ip, Opts, {0, 0, 0, 0}),
     MockIP = proplists:get_value(mock_ip, Opts, {127, 0, 0, 0}),
     Transport = proplists:get_value(transport, Opts, udp),
-    FakeCandAddr = proplists:get_value(fake_candidate_addr, Opts),
+    ClientPort = proplists:get_value(client_port, Opts),
     {ClientMinPort, ClientMaxPort} =
         proplists:get_value(client_port_range, Opts, {50_000, 50_499}),
     {AllocMinPort, AllocMaxPort} =
         proplists:get_value(alloc_port_range, Opts, {50_500, 50_999}),
     Auth_fun = fun(User, _Realm) -> stun_codec:generate_user_password(Secret, User) end,
     Parent = proplists:get_value(parent, Opts),
+    ParentResolver = proplists:get_value(parent_resolver, Opts),
     CertFile = proplists:get_value(certfile, Opts),
     TurnOpts =
         [{use_turn, true},
@@ -48,9 +49,13 @@ start(Secret, Opts) ->
          {turn_min_port, AllocMinPort},
          {turn_max_port, AllocMaxPort},
          {parent, Parent},
-         {fake_candidate_addr, FakeCandAddr},
+         {parent_resolver, ParentResolver},
          {certfile, CertFile}],
-    stun_listener:add_listener(IP, ClientMinPort, ClientMaxPort, Transport, TurnOpts).
+    stun_listener:add_listener(IP,
+                               ClientPort,
+                               {ClientMinPort, ClientMaxPort},
+                               Transport,
+                               TurnOpts).
 
 stop(IP, Port, Transport) ->
     stun_listener:del_listener(IP, Port, Transport).
