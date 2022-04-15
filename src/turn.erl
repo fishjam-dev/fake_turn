@@ -235,7 +235,7 @@ active(#stun{class = request, method = ?STUN_METHOD_REFRESH} = Msg, State) ->
     Resp = prepare_response(State, Msg),
     case Msg#stun.'LIFETIME' of
         0 ->
-            ?LOG_INFO("Client requested closing the TURN session"),
+            ?LOG_DEBUG("Client requested closing the TURN session"),
             R = Resp#stun{class = response, 'LIFETIME' = 0},
             {stop, normal, send(State, R)};
         LifeTime ->
@@ -333,7 +333,7 @@ active(#stun{class = request,
                     Peers = maps:put(Peer, Channel, State#state.peers),
                     Chans = maps:put(Channel, {Peer, TRef}, State#state.channels),
                     NewState = NewState1#state{peers = Peers, channels = Chans},
-                    ?LOG_INFO("~s TURN channel ~.16B for peer ~s",
+                    ?LOG_DEBUG("~s TURN channel ~.16B for peer ~s",
                               [_Op, Channel, stun_logger:encode_addr(Peer)]),
                     R = Resp#stun{class = response},
                     {next_state, active, send(NewState, R)};
@@ -375,7 +375,7 @@ handle_sync_event(_Event, _From, StateName, State) ->
 handle_info({timeout, _Tref, stop}, _StateName, State) ->
     {stop, normal, State};
 handle_info({timeout, _Tref, {permission_timeout, Addr}}, StateName, State) ->
-    ?LOG_INFO("TURN permission for ~s timed out", [stun_logger:encode_addr(Addr)]),
+    ?LOG_DEBUG("TURN permission for ~s timed out", [stun_logger:encode_addr(Addr)]),
     case maps:find(Addr, State#state.permissions) of
         {ok, _} ->
             Perms = maps:remove(Addr, State#state.permissions),
@@ -386,7 +386,7 @@ handle_info({timeout, _Tref, {permission_timeout, Addr}}, StateName, State) ->
 handle_info({timeout, _Tref, {channel_timeout, Channel}}, StateName, State) ->
     case maps:find(Channel, State#state.channels) of
         {ok, {Peer, _}} ->
-            ?LOG_INFO("TURN channel ~.16B for peer ~s timed out",
+            ?LOG_DEBUG("TURN channel ~.16B for peer ~s timed out",
                       [Channel, stun_logger:encode_addr(Peer)]),
             Chans = maps:remove(Channel, State#state.channels),
             Peers = maps:remove(Peer, State#state.peers),
@@ -445,7 +445,7 @@ terminate(_Reason, _StateName, State) ->
         undefined ->
             ok;
         _RAddrPort ->
-            ?LOG_INFO("Deleting TURN allocation")
+            ?LOG_DEBUG("Deleting TURN allocation")
     end,
     if is_pid(State#state.owner) ->
            stun:stop(State#state.owner);
@@ -495,7 +495,7 @@ update_permissions(#state{relay_addr = {IP, _}} = State, Addrs) ->
                                    erlang:start_timer(?PERMISSION_LIFETIME,
                                                       self(),
                                                       {permission_timeout, Addr}),
-                               ?LOG_INFO("~s TURN permission for ~s",
+                               ?LOG_DEBUG("~s TURN permission for ~s",
                                          [_Op, stun_logger:encode_addr(Addr)]),
                                maps:put(Addr, TRef, Acc)
                             end,
@@ -519,7 +519,7 @@ send(State, Pkt) when is_binary(Pkt) ->
                ok ->
                    ok;
                _ ->
-                   ?LOG_INFO("Cannot respond to client: Connection closed"),
+                   ?LOG_DEBUG("Cannot respond to client: Connection closed"),
                    exit(normal)
            end
     end;
