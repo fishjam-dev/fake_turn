@@ -147,20 +147,20 @@ handle_info({tcp, _Sock, TLSData}, StateName, #state{sock_mod = fast_tls} = Stat
         {ok, Data} ->
             process_data(StateName, NewState, Data);
         Err ->
-            ?LOG_INFO("Connection failure: ~p", [Err]),
+            ?LOG_ERROR("Connection failure: ~p", [Err]),
             {stop, normal, NewState}
     end;
 handle_info({tcp, _Sock, Data}, StateName, State) ->
     NewState = update_shaper(State, Data),
     process_data(StateName, NewState, Data);
 handle_info({tcp_closed, _Sock}, _StateName, State) ->
-    ?LOG_INFO("Connection reset by peer"),
+    ?LOG_ERROR("Connection reset by peer"),
     {stop, normal, State};
 handle_info({tcp_error, _Sock, _Reason}, _StateName, State) ->
-    ?LOG_INFO("Connection error: ~p", [_Reason]),
+    ?LOG_ERROR("Connection error: ~p", [_Reason]),
     {stop, normal, State};
 handle_info({timeout, TRef, stop}, _StateName, #state{tref = TRef} = State) ->
-    ?LOG_INFO("Connection timed out"),
+    ?LOG_ERROR("Connection timed out"),
     {stop, normal, State};
 handle_info({timeout, _TRef, activate}, StateName, State) ->
     activate_socket(State),
@@ -234,7 +234,7 @@ process(#state{auth = user} = State,
                     Key = {User, Realm, Pass},
                     case stun_codec:check_integrity(Msg, Key) of
                         true ->
-                            ?LOG_INFO("Accepting long-term STUN/TURN "
+                            ?LOG_DEBUG("Accepting long-term STUN/TURN "
                                       "authentication"),
                             process(NewState, Msg, Key);
                         false ->
