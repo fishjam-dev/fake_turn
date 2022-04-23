@@ -31,7 +31,7 @@
   {applications, [kernel, stdlib, fast_tls, p1_utils]},
   {mod, {stun_app, []}},
   %% hex.pm packaging:
-  {licenses, ["Apache 2.0"]},
+  {licenses, ["Apache-2.0"]},
   {links, [{"Github", "https://github.com/membraneframework/fake_turn"}]}]}.
 
 %% Local Variables:
