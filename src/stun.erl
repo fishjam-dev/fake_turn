@@ -418,7 +418,6 @@ send(State, Msg) ->
     send(State, Msg, undefined).
 
 send(State, Msg, Pass) ->
-    ?LOG_DEBUG(#{verbatim => {"Sending:~n~s", [stun_codec:pp(Msg)]}}),
     send(State, stun_codec:encode(Msg, Pass)).
 
 route_on_turn(State, Msg) ->

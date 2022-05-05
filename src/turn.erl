@@ -524,7 +524,6 @@ send(State, Pkt) when is_binary(Pkt) ->
            end
     end;
 send(State, Msg) ->
-    ?LOG_DEBUG(#{verbatim => {"Sending:~n~s", [stun_codec:pp(Msg)]}}),
     Key = State#state.key,
     case Msg of
         #stun{class = indication} ->
