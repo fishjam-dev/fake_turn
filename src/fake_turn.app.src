@@ -25,7 +25,7 @@
  fake_turn,
  [{description,
    "TURN serving as an endpoint to Membrane RTC Engine. Forked from https://github.com/processone/stun"},
-  {vsn, "0.2.2"},
+  {vsn, "0.2.3"},
   {modules, []},
   {registered, []},
   {applications, [kernel, stdlib, fast_tls, p1_utils]},
