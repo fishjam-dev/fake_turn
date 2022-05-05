@@ -457,7 +457,7 @@ terminate(_Reason, _StateName, State) ->
        true ->
            ok
     end,
-    ?LOG_NOTICE("Relayed ~B KiB (in ~B B / ~B packets, out ~B B / ~B packets), "
+    ?LOG_DEBUG("Relayed ~B KiB (in ~B B / ~B packets, out ~B B / ~B packets), "
                 "duration: ~B seconds",
                 [round((RcvdBytes + SentBytes) / 1024),
                  RcvdBytes,

@@ -100,7 +100,6 @@ udp_recv(Sock, Addr, Port, Data, State) ->
     NewState = prepare_state(State, Sock, {Addr, Port}, gen_udp),
     case stun_codec:decode(Data, datagram) of
         {ok, Msg} ->
-            ?LOG_DEBUG(#{verbatim => {"Received:~n~s", [stun_codec:pp(Msg)]}}),
             process(NewState, Msg);
         Err ->
             ?LOG_DEBUG("Cannot parse packet: ~p", [Err]),
@@ -154,7 +153,7 @@ handle_info({tcp, _Sock, Data}, StateName, State) ->
     NewState = update_shaper(State, Data),
     process_data(StateName, NewState, Data);
 handle_info({tcp_closed, _Sock}, _StateName, State) ->
-    ?LOG_ERROR("Connection reset by peer"),
+    ?LOG_DEBUG("Connection reset by peer"),
     {stop, normal, State};
 handle_info({tcp_error, _Sock, _Reason}, _StateName, State) ->
     ?LOG_ERROR("Connection error: ~p", [_Reason]),
@@ -377,7 +376,6 @@ process_data(NextStateName, #state{buf = Buf} = State, Data) ->
     NewBuf = <<Buf/binary, Data/binary>>,
     case stun_codec:decode(NewBuf, stream) of
         {ok, Msg, Tail} ->
-            ?LOG_DEBUG(#{verbatim => {"Received:~n~s", [stun_codec:pp(Msg)]}}),
             NewState = process(State, Msg),
             process_data(NextStateName, NewState#state{buf = <<>>}, Tail);
         empty ->
