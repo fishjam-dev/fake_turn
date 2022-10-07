@@ -334,7 +334,7 @@ active(#stun{class = request,
                     Chans = maps:put(Channel, {Peer, TRef}, State#state.channels),
                     NewState = NewState1#state{peers = Peers, channels = Chans},
                     ?LOG_DEBUG("~s TURN channel ~.16B for peer ~s",
-                              [_Op, Channel, stun_logger:encode_addr(Peer)]),
+                               [_Op, Channel, stun_logger:encode_addr(Peer)]),
                     R = Resp#stun{class = response},
                     {next_state, active, send(NewState, R)};
                 {error, Code} ->
@@ -387,7 +387,7 @@ handle_info({timeout, _Tref, {channel_timeout, Channel}}, StateName, State) ->
     case maps:find(Channel, State#state.channels) of
         {ok, {Peer, _}} ->
             ?LOG_DEBUG("TURN channel ~.16B for peer ~s timed out",
-                      [Channel, stun_logger:encode_addr(Peer)]),
+                       [Channel, stun_logger:encode_addr(Peer)]),
             Chans = maps:remove(Channel, State#state.channels),
             Peers = maps:remove(Peer, State#state.peers),
             {next_state, StateName, State#state{channels = Chans, peers = Peers}};
@@ -458,13 +458,13 @@ terminate(_Reason, _StateName, State) ->
            ok
     end,
     ?LOG_DEBUG("Relayed ~B KiB (in ~B B / ~B packets, out ~B B / ~B packets), "
-                "duration: ~B seconds",
-                [round((RcvdBytes + SentBytes) / 1024),
-                 RcvdBytes,
-                 RcvdPkts,
-                 SentBytes,
-                 SentPkts,
-                 get_duration(State, second)]),
+               "duration: ~B seconds",
+               [round((RcvdBytes + SentBytes) / 1024),
+                RcvdBytes,
+                RcvdPkts,
+                SentBytes,
+                SentPkts,
+                get_duration(State, second)]),
     run_hook(turn_session_stop, State),
     turn_sm:del_allocation(AddrPort, Username, Realm).
 
@@ -496,7 +496,7 @@ update_permissions(#state{relay_addr = {IP, _}} = State, Addrs) ->
                                                       self(),
                                                       {permission_timeout, Addr}),
                                ?LOG_DEBUG("~s TURN permission for ~s",
-                                         [_Op, stun_logger:encode_addr(Addr)]),
+                                          [_Op, stun_logger:encode_addr(Addr)]),
                                maps:put(Addr, TRef, Acc)
                             end,
                             State#state.permissions,

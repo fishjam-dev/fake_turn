@@ -100,9 +100,10 @@ udp_recv(Sock, Addr, Port, Data, State) ->
     NewState = prepare_state(State, Sock, {Addr, Port}, gen_udp),
     case stun_codec:decode(Data, datagram) of
         {ok, Msg} ->
-            process(NewState, Msg);
+            process(NewState, Msg, {Addr, Port});
         Err ->
             ?LOG_DEBUG("Cannot parse packet: ~p", [Err]),
+            % TODO: send info to ice endpoint about invalid packet
             NewState
     end.
 
@@ -182,38 +183,47 @@ process(State,
         #stun{class = request,
               method = ?STUN_METHOD_BINDING,
               'MESSAGE-INTEGRITY' = undefined} =
-            Msg) ->
-    process(State, Msg, undefined);
+            Msg,
+        Peer) ->
+    process(State, Msg, undefined, Peer);
 process(#state{auth = anonymous} = State,
-        #stun{class = request, 'MESSAGE-INTEGRITY' = undefined} = Msg) ->
-    process(State, Msg, undefined);
+        #stun{class = request, 'MESSAGE-INTEGRITY' = undefined} = Msg,
+        Peer) ->
+    process(State, Msg, undefined, Peer);
 process(#state{auth = user} = State,
-        #stun{class = request, 'MESSAGE-INTEGRITY' = undefined} = Msg) ->
+        #stun{class = request, 'MESSAGE-INTEGRITY' = undefined} = Msg,
+        Peer) ->
     Resp = prepare_response(State, Msg),
     {Nonce, Nonces} = make_nonce(State#state.peer, State#state.nonces),
     R = Resp#stun{class = error,
                   'ERROR-CODE' = stun_codec:error(401),
                   'REALM' = State#state.realm,
                   'NONCE' = Nonce},
+    send_error_to_parent(State, {401, no_message_integrity}, Peer),
     send(State#state{nonces = Nonces}, R);
+% TODO: send info to ice endpoint about ?? aloocation error ??
 process(#state{auth = anonymous} = State,
         #stun{class = request,
               'USERNAME' = User,
               'REALM' = Realm,
               'NONCE' = Nonce} =
-            Msg)
+            Msg,
+        Peer)
     when User /= undefined, Realm /= undefined, Nonce /= undefined ->
     ?LOG_NOTICE("Rejecting request: Credentials provided for anonymous "
                 "service"),
     Resp = prepare_response(State, Msg),
     R = Resp#stun{class = error, 'ERROR-CODE' = stun_codec:error(401)},
+    send_error_to_parent(State, {401, anonymous_service}, Peer),
     send(State, R);
+% TODO: send info to ice endpoint about error caused by invalid credentials
 process(#state{auth = user} = State,
         #stun{class = request,
               'USERNAME' = User,
               'REALM' = Realm,
               'NONCE' = Nonce} =
-            Msg)
+            Msg,
+        Peer)
     when User /= undefined, Realm /= undefined, Nonce /= undefined ->
     stun_logger:add_metadata(#{stun_user => User}),
     Resp = prepare_response(State, Msg),
@@ -228,22 +238,27 @@ process(#state{auth = user} = State,
             case (State#state.auth_fun)(User, Realm) of
                 <<"">> ->
                     ?LOG_NOTICE("Failed long-term STUN/TURN authentication"),
+                    send_error_to_parent(NewState, {401, {failed_long_term_authentication, invalid_realm}}, Peer),
                     send(NewState, R);
+                % TODO: send info to ice endpoint about error caused by something, ?? also invalid credentials ??
                 Pass ->
                     Key = {User, Realm, Pass},
                     case stun_codec:check_integrity(Msg, Key) of
                         true ->
                             ?LOG_DEBUG("Accepting long-term STUN/TURN "
-                                      "authentication"),
+                                       "authentication"),
                             process(NewState, Msg, Key);
                         false ->
                             ?LOG_NOTICE("Failed long-term STUN/TURN "
                                         "authentication"),
+                            send_error_to_parent(NewState, {401, {failed_long_term_authentication, invalid_message_integrity}}, Peer),
                             send(NewState, R)
                     end
             end;
         false ->
             ?LOG_NOTICE("Rejecting request: Nonexistent nonce"),
+            send_error_to_parent(State, {438, nonexistent_nonce}, Peer),
+            % TODO: send info to ice endpoint about error caused by nonexistent nonce
             {NewNonce, NewNonces} = make_nonce(State#state.peer, Nonces),
             R = Resp#stun{class = error,
                           'ERROR-CODE' = stun_codec:error(438),
@@ -256,34 +271,42 @@ process(State,
               'USERNAME' = User,
               'REALM' = undefined,
               'NONCE' = undefined} =
-            Msg)
+            Msg,
+        Peer)
     when User /= undefined ->
     ?LOG_NOTICE("Rejecting request: Missing realm and nonce"),
     Resp = prepare_response(State, Msg),
     R = Resp#stun{class = error, 'ERROR-CODE' = stun_codec:error(401)},
+    send_error_to_parent(State, {401, missing_realm_and_nonce}, Peer),
     send(State, R);
-process(State, #stun{class = request} = Msg) ->
+process(State, #stun{class = request} = Msg, Peer) ->
     ?LOG_NOTICE("Rejecting malformed request"),
     Resp = prepare_response(State, Msg),
     R = Resp#stun{class = error, 'ERROR-CODE' = stun_codec:error(400)},
+    send_error_to_parent(State, {400, malformed_request}, Peer),
     send(State, R);
-process(State, #stun{class = indication, method = ?STUN_METHOD_SEND} = Msg) ->
+process(State, #stun{class = indication, method = ?STUN_METHOD_SEND} = Msg, _Peer) ->
     route_on_turn(State, Msg);
-process(State, Msg) when is_record(Msg, turn) ->
+process(State, Msg, _Peer) when is_record(Msg, turn) ->
     route_on_turn(State, Msg);
-process(State, _Msg) ->
+process(State, _Msg, _Peer) ->
     State.
 
 process(State,
         #stun{class = request, unsupported = [_ | _] = Unsupported} = Msg,
-        Secret) ->
+        Secret,
+        Peer) ->
     ?LOG_DEBUG("Rejecting request with unknown attribute(s): ~p", [Unsupported]),
     Resp = prepare_response(State, Msg),
     R = Resp#stun{class = error,
                   'UNKNOWN-ATTRIBUTES' = Unsupported,
                   'ERROR-CODE' = stun_codec:error(420)},
+    send_error_to_parent(State, {420, unknown_attributes}, Peer),
     send(State, R, Secret);
-process(State, #stun{class = request, method = ?STUN_METHOD_BINDING} = Msg, Secret) ->
+process(State,
+        #stun{class = request, method = ?STUN_METHOD_BINDING} = Msg,
+        Secret,
+        _Peer) ->
     Resp = prepare_response(State, Msg),
     AddrPort = unmap_v4_addr(State#state.peer),
     R = case stun_codec:version(Msg) of
@@ -293,15 +316,19 @@ process(State, #stun{class = request, method = ?STUN_METHOD_BINDING} = Msg, Secr
             new ->
                 ?LOG_DEBUG("Responding to STUN request"),
                 Resp#stun{class = response, 'XOR-MAPPED-ADDRESS' = AddrPort}
+            % send info about these two cases above to ice endpoint
         end,
     run_hook(stun_query, State, Msg),
     send(State, R, Secret);
-process(#state{use_turn = false} = State, #stun{class = request} = Msg, Secret) ->
+process(#state{use_turn = false} = State, #stun{class = request} = Msg, Secret, _Peer) ->
     ?LOG_NOTICE("Rejecting TURN request: TURN is disabled"),
     Resp = prepare_response(State, Msg),
     R = Resp#stun{class = error, 'ERROR-CODE' = stun_codec:error(405)},
     send(State, R, Secret);
-process(State, #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, Secret) ->
+process(State,
+        #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg,
+        Secret,
+        Peer) ->
     Resp = prepare_response(State, Msg),
     AddrPort = State#state.peer,
     SockMod = State#state.sock_mod,
@@ -349,6 +376,7 @@ process(State, #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, Sec
                 {error, stale} ->
                     ?LOG_NOTICE("Rejecting request: Stale nonce"),
                     R = Resp#stun{class = error, 'ERROR-CODE' = stun_codec:error(438)},
+                    send_error_to_parent(State, {438, stale_nonce}, Peer),
                     send(State, R);
                 Err ->
                     ?LOG_ERROR("Cannot start TURN session: ~p", [Err]),
@@ -356,27 +384,34 @@ process(State, #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, Sec
                     send(State, R, Secret)
             end
     end;
-process(State, #stun{class = request, method = ?STUN_METHOD_REFRESH} = Msg, Secret) ->
+process(State,
+        #stun{class = request, method = ?STUN_METHOD_REFRESH} = Msg,
+        Secret,
+        _Peer) ->
     route_on_turn(State, Msg, Secret);
 process(State,
         #stun{class = request, method = ?STUN_METHOD_CREATE_PERMISSION} = Msg,
-        Secret) ->
+        Secret,
+        _Peer) ->
     route_on_turn(State, Msg, Secret);
 process(State,
         #stun{class = request, method = ?STUN_METHOD_CHANNEL_BIND} = Msg,
-        Secret) ->
+        Secret,
+        _Peer) ->
     route_on_turn(State, Msg, Secret);
-process(State, #stun{class = request} = Msg, Secret) ->
+process(State, #stun{class = request} = Msg, Secret, Peer) ->
     ?LOG_NOTICE("Rejecting request: Method not allowed"),
     Resp = prepare_response(State, Msg),
     R = Resp#stun{class = error, 'ERROR-CODE' = stun_codec:error(405)},
+    % todo: error method not allowed
+    send_error_to_parent(State, {405, method_not_allowed}, Peer),
     send(State, R, Secret).
 
 process_data(NextStateName, #state{buf = Buf} = State, Data) ->
     NewBuf = <<Buf/binary, Data/binary>>,
     case stun_codec:decode(NewBuf, stream) of
         {ok, Msg, Tail} ->
-            NewState = process(State, Msg),
+            NewState = process(State, Msg, State#state.peer),
             process_data(NextStateName, NewState#state{buf = <<>>}, Tail);
         empty ->
             NewState = State#state{buf = <<>>},
@@ -438,6 +473,14 @@ route_on_turn(State, Msg, Pass) ->
                 _ ->
                     State
             end
+    end.
+
+send_error_to_parent(State, Error, Peer) ->
+    case State#state.parent of
+        undefined -> 
+            ?LOG_WARNING("DUPA this shouldn't happend");
+        _ ->
+            State#state.parent ! {turn_error, {Error, Peer}}
     end.
 
 prepare_state(Opts, Sock, Peer, SockMod) when is_list(Opts) ->
@@ -585,6 +628,7 @@ prepare_state(Opts, Sock, Peer, SockMod) when is_list(Opts) ->
                         end,
                         #state{session_id = ID,
                                peer = Peer,
+                               %    todo: get peer ({ip, port}) to inform ice endpoint about malicious traffic
                                sock = Sock,
                                sock_mod = SockMod,
                                use_turn = true},
