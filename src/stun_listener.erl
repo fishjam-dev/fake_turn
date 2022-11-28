@@ -34,6 +34,8 @@
 -include("stun_logger.hrl").
 
 -define(TCP_SEND_TIMEOUT, 10000).
+-define(UDP_READ_PACKETS, 100).
+-define(UDP_RECBUF, 1024 * 1024). % 1 MiB
 
 -record(state, {listeners = #{}}).
 
@@ -159,7 +161,12 @@ start_listener(IP, ClientPort, {MinPort, MaxPort}, Transport, Opts, Owner)
     end;
 start_listener(IP, ClientPort, {MinPort, MaxPort}, udp, Opts, Owner) ->
     OpenFun =
-        fun(Port) -> gen_udp:open(Port, [binary, {ip, IP}, {active, false}, {reuseaddr, true}])
+        fun(Port) -> gen_udp:open(Port, [binary, 
+            {ip, IP}, 
+            {active, false},
+            {recbuf, ?UDP_RECBUF},
+            {read_packets, ?UDP_READ_PACKETS}, 
+            {reuseaddr, true}])
         end,
     PortInfo =
         if ClientPort == undefined ->
