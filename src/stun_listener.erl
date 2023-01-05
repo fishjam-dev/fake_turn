@@ -26,7 +26,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, add_listener/5, del_listener/3, start_listener/6]).
+-export([start_link/0, add_listener/5, del_listener/3, start_listener/6,
+         tcp_socket_guard/2]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -154,6 +155,7 @@ start_listener(IP, ClientPort, {MinPort, MaxPort}, Transport, Opts, Owner)
         {ok, ListenSocket} ->
             {ok, PortNumber} = inet:port(ListenSocket),
             Owner ! {self(), {ok, PortNumber}},
+            start_tcp_socket_guard(ListenSocket),
             OptsWithTLS1 = stun:tcp_init(ListenSocket, OptsWithTLS),
             accept(ListenSocket, OptsWithTLS1);
         Err ->
@@ -161,12 +163,14 @@ start_listener(IP, ClientPort, {MinPort, MaxPort}, Transport, Opts, Owner)
     end;
 start_listener(IP, ClientPort, {MinPort, MaxPort}, udp, Opts, Owner) ->
     OpenFun =
-        fun(Port) -> gen_udp:open(Port, [binary, 
-            {ip, IP}, 
-            {active, false},
-            {recbuf, ?UDP_RECBUF},
-            {read_packets, ?UDP_READ_PACKETS}, 
-            {reuseaddr, false}])
+        fun(Port) ->
+           gen_udp:open(Port,
+                        [binary,
+                         {ip, IP},
+                         {active, false},
+                         {recbuf, ?UDP_RECBUF},
+                         {read_packets, ?UDP_READ_PACKETS},
+                         {reuseaddr, false}])
         end,
     PortInfo =
         if ClientPort == undefined ->
@@ -200,8 +204,8 @@ accept(ListenSocket, Opts) ->
             case {inet:peername(Socket), inet:sockname(Socket)} of
                 {{ok, {PeerAddr, PeerPort}}, {ok, {Addr, Port}}} ->
                     ?LOG_DEBUG("Accepting connection: ~s -> ~s",
-                              [stun_logger:encode_addr({PeerAddr, PeerPort}),
-                               stun_logger:encode_addr({Addr, Port})]),
+                               [stun_logger:encode_addr({PeerAddr, PeerPort}),
+                                stun_logger:encode_addr({Addr, Port})]),
                     case stun:start({gen_tcp, Socket}, [{session_id, ID} | Opts]) of
                         {ok, Pid} ->
                             gen_tcp:controlling_process(Socket, Pid);
@@ -265,4 +269,14 @@ open_socket(MinPort, MaxPort, OpenSockFunc, Next, Count) ->
             end;
         Err ->
             Err
+    end.
+
+start_tcp_socket_guard(Socket) ->
+    spawn(?MODULE, tcp_socket_guard, [Socket, self()]).
+
+tcp_socket_guard(Socket, SocketOwner) ->
+    Ref = erlang:monitor(SocketOwner),
+    receive
+        {'DOWN', Ref, _Type, _Object, _Info} ->
+            gen_tcp:shutdown(Socket, write)
     end.

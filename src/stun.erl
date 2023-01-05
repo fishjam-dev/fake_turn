@@ -234,7 +234,7 @@ process(#state{auth = user} = State,
                     case stun_codec:check_integrity(Msg, Key) of
                         true ->
                             ?LOG_DEBUG("Accepting long-term STUN/TURN "
-                                      "authentication"),
+                                       "authentication"),
                             process(NewState, Msg, Key);
                         false ->
                             ?LOG_NOTICE("Failed long-term STUN/TURN "
