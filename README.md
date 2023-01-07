@@ -1,6 +1,6 @@
 # Fake TURN
 
-**This package works only with [membrane_ice_plugin](https://github.com/membraneframework/membrane_ice_plugin) and it's very unlikely that you need to use it directly.**
+**This package works only with [membrane_ice_plugin](https://github.com/jellyfish-dev/membrane_ice_plugin) and it's very unlikely that you need to use it directly.**
 
 Forked from https://github.com/processone/stun.
 

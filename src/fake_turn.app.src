@@ -32,7 +32,7 @@
   {mod, {stun_app, []}},
   %% hex.pm packaging:
   {licenses, ["Apache-2.0"]},
-  {links, [{"Github", "https://github.com/membraneframework/fake_turn"}]}]}.
+  {links, [{"Github", "https://github.com/jellyfish-dev/fake_turn"}]}]}.
 
 %% Local Variables:
 %% mode: erlang
