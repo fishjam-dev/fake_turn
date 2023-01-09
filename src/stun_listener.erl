@@ -275,7 +275,7 @@ start_tcp_socket_guard(Socket) ->
     spawn(?MODULE, tcp_socket_guard, [Socket, self()]).
 
 tcp_socket_guard(Socket, SocketOwner) ->
-    Ref = erlang:monitor(SocketOwner),
+    Ref = erlang:monitor(process, SocketOwner),
     receive
         {'DOWN', Ref, _Type, _Object, _Info} ->
             gen_tcp:shutdown(Socket, write)
