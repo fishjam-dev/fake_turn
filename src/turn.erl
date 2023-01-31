@@ -586,7 +586,7 @@ send_payload_to_parent(State, Payload) ->
                 {ice_controlling, StunMsg#stun.'ICE-CONTROLLING'}],
                self()};
         {Parent, false} ->
-            Parent ! {ice_payload, Payload}
+            Parent ! {ice_payload, Payload, get_timestamp()}
     end,
     NewState.
 
