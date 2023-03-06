@@ -511,18 +511,28 @@ update_permissions(#state{relay_addr = {IP, _}} = State, Addrs) ->
 send(State, Pkt) when is_binary(Pkt) ->
     SockMod = State#state.sock_mod,
     Sock = State#state.sock,
-    if SockMod == gen_udp ->
-           {Addr, Port} = State#state.addr,
-           gen_udp:send(Sock, Addr, Port, Pkt);
-       true ->
-           case SockMod:send(Sock, Pkt) of
-               ok ->
-                   ok;
-               _ ->
-                   ?LOG_DEBUG("Cannot respond to client: Connection closed"),
-                   exit(normal)
-           end
+
+    SendResult =
+      if SockMod == gen_udp ->
+             {Addr, Port} = State#state.addr,
+             gen_udp:send(Sock, Addr, Port, Pkt);
+         true ->
+             case SockMod:send(Sock, Pkt) of
+                 ok ->
+                     ok;
+                 _ ->
+                     ?LOG_DEBUG("Cannot respond to client: Connection closed"),
+                     exit(normal)
+             end
+      end,
+
+    case SendResult of
+      ok -> ok;
+      {error, Error} ->
+        send_to_parent(State, {failed_to_send_pkt, Error, byte_size(Pkt)}),
+        {error, Error}
     end;
+
 send(State, Msg) ->
     Key = State#state.key,
     case Msg of
