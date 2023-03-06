@@ -508,6 +508,14 @@ update_permissions(#state{relay_addr = {IP, _}} = State, Addrs) ->
             {error, 403}
     end.
 
+send_to_parent(State, Message) ->
+  NewState = try_resolve_parent(State),
+
+  case NewState#state.parent of
+    undefined -> undefined;
+    Parent -> Parent ! Message
+  end.
+
 send(State, Pkt) when is_binary(Pkt) ->
     SockMod = State#state.sock_mod,
     Sock = State#state.sock,
@@ -547,6 +555,7 @@ send(State, Msg) ->
             send(State, stun_codec:encode(Msg, Key)),
             State
     end.
+
 
 send_payload_to_client(Payload, State) ->
     CandidateAddr = State#state.candidate_addr,
