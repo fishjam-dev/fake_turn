@@ -556,7 +556,6 @@ send(State, Msg) ->
             State
     end.
 
-
 send_payload_to_client(Payload, State) ->
     CandidateAddr = State#state.candidate_addr,
     {CandidateIP, _} = CandidateAddr,
