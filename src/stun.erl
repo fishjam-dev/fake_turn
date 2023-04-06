@@ -602,18 +602,8 @@ prepare_state(State, _Sock, Peer, SockMod) ->
     stun_logger:set_metadata(stun, SockMod, ID, Peer),
     State#state{session_id = ID, peer = Peer}.
 
-prepare_addr(IPBin) when is_binary(IPBin) ->
-    prepare_addr(binary_to_list(IPBin));
-prepare_addr(IPS) when is_list(IPS) ->
-    inet_parse:address(IPS);
-prepare_addr(T) when is_tuple(T) ->
-    try
-        inet_parse:address(
-            inet_parse:ntoa(T))
-    catch
-        _:_ ->
-            {error, einval}
-    end.
+prepare_addr(Addr) ->
+    Addr.
 
 activate_socket(#state{sock = Sock, sock_mod = SockMod}) ->
     case SockMod of
