@@ -603,7 +603,7 @@ prepare_state(State, _Sock, Peer, SockMod) ->
     State#state{session_id = ID, peer = Peer}.
 
 prepare_addr(Addr) ->
-    Addr.
+    {ok, Addr}.
 
 activate_socket(#state{sock = Sock, sock_mod = SockMod}) ->
     case SockMod of
