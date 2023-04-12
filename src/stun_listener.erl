@@ -122,13 +122,13 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-start_listener(IP, ClientPort, {MinPort, MaxPort}, Transport, Opts, Owner)
+start_listener(_IP, ClientPort, {MinPort, MaxPort}, Transport, Opts, Owner)
     when Transport == tcp; Transport == tls ->
     OpenFun =
         fun(Port) ->
            gen_tcp:listen(Port,
                           [binary,
-                           {ip, IP},
+                           {ip, {0,0,0,0}},
                            {packet, 0},
                            {active, false},
                            {reuseaddr, false},
