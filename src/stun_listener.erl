@@ -199,7 +199,7 @@ accept(ListenSocket, Opts) ->
         {ok, Socket} ->
             case {inet:peername(Socket), inet:sockname(Socket)} of
                 {{ok, {PeerAddr, PeerPort}}, {ok, {Addr, Port}}} ->
-                    ?LOG_DEBUG("Accepting connection: ~s -> ~s",
+                    ?LOG_INFO("Accepting connection: ~s -> ~s",
                               [stun_logger:encode_addr({PeerAddr, PeerPort}),
                                stun_logger:encode_addr({Addr, Port})]),
                     case stun:start({gen_tcp, Socket}, [{session_id, ID} | Opts]) of

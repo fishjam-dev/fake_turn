@@ -337,6 +337,8 @@ process(State, #stun{class = request, method = ?STUN_METHOD_ALLOCATE} = Msg, Sec
                       true ->
                           []
                    end],
+
+            ?LOG_INFO("Creating a new allocation"),
             case turn:start(Opts) of
                 {ok, Pid} ->
                     cancel_timer(State#state.tref),
