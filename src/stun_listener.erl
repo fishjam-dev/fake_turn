@@ -131,7 +131,7 @@ start_listener(IP, ClientPort, {MinPort, MaxPort}, Transport, Opts, Owner)
                            {ip, IP},
                            {packet, 0},
                            {active, false},
-                           {reuseaddr, false},
+                           {reuseaddr, true},
                            {nodelay, true},
                            {keepalive, true},
                            {send_timeout, ?TCP_SEND_TIMEOUT},
@@ -166,7 +166,7 @@ start_listener(IP, ClientPort, {MinPort, MaxPort}, udp, Opts, Owner) ->
             {active, false},
             {recbuf, ?UDP_RECBUF},
             {read_packets, ?UDP_READ_PACKETS}, 
-            {reuseaddr, false}])
+            {reuseaddr, true}])
         end,
     PortInfo =
         if ClientPort == undefined ->
