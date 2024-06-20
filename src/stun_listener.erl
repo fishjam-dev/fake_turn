@@ -165,8 +165,7 @@ start_listener(IP, ClientPort, {MinPort, MaxPort}, udp, Opts, Owner) ->
             {ip, IP}, 
             {active, false},
             {recbuf, ?UDP_RECBUF},
-            {read_packets, ?UDP_READ_PACKETS}, 
-            {reuseaddr, true}])
+            {read_packets, ?UDP_READ_PACKETS}])
         end,
     PortInfo =
         if ClientPort == undefined ->
